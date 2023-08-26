@@ -25,6 +25,7 @@ from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.policy.diffusion_transformer_lowdim_policy import DiffusionTransformerLowdimPolicy
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
+from diffusion_policy.env_runner.robomimic_lowdim_runner import RobomimicLowdimRunner
 from diffusion_policy.common.checkpoint_util import TopKCheckpointManager
 from diffusion_policy.common.json_logger import JsonLogger
 from diffusion_policy.model.common.lr_scheduler import get_scheduler
@@ -241,9 +242,10 @@ class TrainDiffusionTransformerLowdimWorkspace(BaseWorkspace):
                         # sample trajectory from training set, and evaluate difference
                         batch = dict_apply(train_sampling_batch, lambda x: x.to(device, non_blocking=True))
                         obs_dict = {'obs': batch['obs']}
+                        goal_dict = {'goal': batch['goal']}
                         gt_action = batch['action']
                         
-                        result = policy.predict_action(obs_dict)
+                        result = policy.predict_action(obs_dict, goal_dict)
                         if cfg.pred_action_steps_only:
                             pred_action = result['action']
                             start = cfg.n_obs_steps - 1
@@ -290,6 +292,22 @@ class TrainDiffusionTransformerLowdimWorkspace(BaseWorkspace):
                 json_logger.log(step_log)
                 self.global_step += 1
                 self.epoch += 1
+                
+    def eval(self, ckpt_path=None) -> dict:
+
+        cfg = copy.deepcopy(self.cfg)
+        #raise error if ckpt_path is None
+        if ckpt_path is None:
+            raise ValueError("ckpt_path must be provided")
+        self.load_checkpoint(path=ckpt_path)
+        # configure env
+        env_runner: RobomimicLowdimRunner
+        env_runner = hydra.utils.instantiate(
+            cfg.task.env_runner,
+            output_dir=self.output_dir)
+        assert isinstance(env_runner, RobomimicLowdimRunner)
+        log, traj = env_runner.rollout(self.model)
+        return traj
 
 @hydra.main(
     version_base=None,

@@ -8,7 +8,10 @@ import tqdm
 import h5py
 import dill
 import math
+import time
+from  typing import List
 import wandb.sdk.data_types.video as wv
+from copy import deepcopy
 from diffusion_policy.gym_util.async_vector_env import AsyncVectorEnv
 # from diffusion_policy.gym_util.sync_vector_env import SyncVectorEnv
 from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
@@ -22,6 +25,7 @@ from diffusion_policy.env.robomimic.robomimic_lowdim_wrapper import RobomimicLow
 import robomimic.utils.file_utils as FileUtils
 import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.obs_utils as ObsUtils
+import robomimic.utils.tensor_utils as TensorUtils
 
 
 def create_env(env_meta, obs_keys):
@@ -37,6 +41,8 @@ def create_env(env_meta, obs_keys):
         use_image_obs=False, 
     )
     return env
+
+
 
 
 class RobomimicLowdimRunner(BaseLowdimRunner):
@@ -224,6 +230,45 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         self.rotation_transformer = rotation_transformer
         self.abs_action = abs_action
         self.tqdm_interval_sec = tqdm_interval_sec
+        self.dataset_path = dataset_path
+    
+    def get_goal(self, color = None):
+        obs_keys = [
+                'object', 
+                'eef_pos', 
+                'eef_quat', 
+                'gripper_qpos']
+        # set random seed based on current time
+        np.random.seed(int(time.time()))
+        with h5py.File(self.dataset_path, 'r') as f:
+            final_goal = None
+            while final_goal is None:
+                # get last obs from random demo
+                rand_demo = np.random.randint(0, len(f['data']))
+                raw_obs = f[f'data/demo_{rand_demo}/obs']
+                #get data from  <HDF5 dataset "object": shape (285, 23), type "<f8">
+                # convert goal dict to numpy array
+                obs = np.concatenate([
+                    raw_obs[key][:] for key in obs_keys
+                    ], axis=-1).astype(np.float32)
+                
+                #goal = np.zeros_like(obs)
+                last_obs = obs[-1]
+                #goal[:] = last_obs
+                goal = last_obs
+                heights = goal[[2, 9]]
+                if color is None:
+                    final_goal = goal
+                elif color == 'r':
+                    if heights[0] > heights[1]:
+                        final_goal = goal
+                elif color == 'g':
+                    if heights[0] < heights[1]:
+                        final_goal = goal
+        return goal
+
+
+
 
     def run(self, policy: BaseLowdimPolicy):
         device = policy.device
@@ -238,6 +283,13 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         # allocate data
         all_video_paths = [None] * n_inits
         all_rewards = [None] * n_inits
+
+        # Generate n_inits different goals and stack them along the first dimension
+        repeated_goal = np.stack([self.get_goal() for _ in range(n_inits)], axis=0)
+
+        # Repeat the repeated_goal array n_obs_steps times along the middle dimension
+        all_goals = np.repeat(repeated_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
+
 
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
@@ -264,6 +316,8 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             env_name = self.env_meta['env_name']
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Lowdim {chunk_idx+1}/{n_chunks}", 
                 leave=False, mininterval=self.tqdm_interval_sec)
+            
+            goal = all_goals[this_global_slice]
 
             done = False
             while not done:
@@ -271,6 +325,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 np_obs_dict = {
                     # handle n_latency_steps by discarding the last n_latency_steps
                     'obs': obs[:,:self.n_obs_steps].astype(np.float32)
+                }
+                np_goal_dict = {
+                    'goal': goal[:,:self.n_obs_steps].astype(np.float32)
                 }
                 if self.past_action and (past_action is not None):
                     # TODO: not tested
@@ -282,9 +339,13 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                     lambda x: torch.from_numpy(x).to(
                         device=device))
 
+                goal_dict = dict_apply(np_goal_dict, 
+                    lambda x: torch.from_numpy(x).to(
+                        device=device))
+
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict)
+                    action_dict = policy.predict_action(obs_dict, goal_dict)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -345,6 +406,161 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             log_data[name] = value
 
         return log_data
+    
+    def rollout(self, policy: BaseLowdimPolicy):
+        device = policy.device
+        dtype = policy.dtype
+        env = self.env
+        
+        # plan for rollout
+        n_envs = len(self.env_fns)
+        n_inits = len(self.env_init_fn_dills)
+        n_chunks = math.ceil(n_inits / n_envs)
+
+        temp_goal = self.get_goal(color = 'r')
+
+        # Generate n_inits different goals and stack them along the first dimension
+        repeated_goal = np.stack([temp_goal for _ in range(n_inits)], axis=0)
+
+        # Repeat the repeated_goal array n_obs_steps times along the middle dimension
+        all_goals = np.repeat(repeated_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
+
+        # allocate data
+        all_video_paths = [None] * n_inits
+        all_rewards = [None] * n_inits
+
+        trajs = []
+
+        for chunk_idx in range(n_chunks):
+            start = chunk_idx * n_envs
+            end = min(n_inits, start + n_envs)
+            this_global_slice = slice(start, end)
+            this_n_active_envs = end - start
+            this_local_slice = slice(0,this_n_active_envs)
+            
+            this_init_fns = self.env_init_fn_dills[this_global_slice]
+            n_diff = n_envs - len(this_init_fns)
+            if n_diff > 0:
+                this_init_fns.extend([self.env_init_fn_dills[0]]*n_diff)
+            assert len(this_init_fns) == n_envs
+
+            # init envs
+            env.call_each('run_dill_function', 
+                args_list=[(x,) for x in this_init_fns])
+
+            # start rollout
+            obs = env.reset()
+            past_action = None
+            traj = dict(actions=[], rewards=[], dones=[], states=[], obs=[], next_obs=[])
+
+            goal = all_goals[this_global_slice]
+
+            env_name = self.env_meta['env_name']
+            pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Lowdim {chunk_idx+1}/{n_chunks}", 
+                leave=False, mininterval=self.tqdm_interval_sec)
+
+            done = False
+            while not done:
+                # create obs dict
+                np_obs_dict = {
+                    # handle n_latency_steps by discarding the last n_latency_steps
+                    'obs': obs[:,:self.n_obs_steps].astype(np.float32)
+                }
+
+                np_goal_dict = {
+                    'goal': goal[:,:self.n_obs_steps].astype(np.float32)
+                }
+
+                if self.past_action and (past_action is not None):
+                    # TODO: not tested
+                    np_obs_dict['past_action'] = past_action[
+                        :,-(self.n_obs_steps-1):].astype(np.float32)
+                
+                # device transfer
+                obs_dict = dict_apply(np_obs_dict, 
+                    lambda x: torch.from_numpy(x).to(
+                        device=device))
+
+                goal_dict = dict_apply(np_goal_dict, 
+                    lambda x: torch.from_numpy(x).to(
+                        device=device))
+
+                # run policy
+                with torch.no_grad():
+                    action_dict = policy.predict_action(obs_dict, goal_dict)
+
+                # device_transfer
+                np_action_dict = dict_apply(action_dict,
+                    lambda x: x.detach().to('cpu').numpy())
+
+                # handle latency_steps, we discard the first n_latency_steps actions
+                # to simulate latency
+                action = np_action_dict['action'][:,self.n_latency_steps:]
+                if not np.all(np.isfinite(action)):
+                    print(action)
+                    raise RuntimeError("Nan or Inf action")
+                
+                # step env
+                env_action = action
+                if self.abs_action:
+                    env_action = self.undo_transform_action(action)
+
+                next_obs, reward, dones, info = env.step(env_action)
+                
+                # collect transition
+                traj["actions"].append(env_action)
+                traj["rewards"].append(reward)
+                traj["dones"].append(dones)
+                traj["obs"].append(obs)#ObsUtils.unprocess_obs_dict(obs))
+                traj["next_obs"].append(next_obs)#ObsUtils.unprocess_obs_dict(next_obs))
+
+
+                obs = deepcopy(next_obs)
+                done = np.all(dones)
+                past_action = action
+
+                # update pbar
+                pbar.update(action.shape[1])
+            pbar.close()
+
+            # collect data for this round
+            all_video_paths[this_global_slice] = env.render()[this_local_slice]
+            all_rewards[this_global_slice] = env.call('get_attr', 'reward')[this_local_slice]
+            #traj["obs"] = TensorUtils.list_of_flat_dict_to_dict_of_list(traj["obs"])
+            #traj["next_obs"] = TensorUtils.list_of_flat_dict_to_dict_of_list(traj["next_obs"])
+            trajs.append(traj)
+
+        # log
+        max_rewards = collections.defaultdict(list)
+        log_data = dict()
+        # results reported in the paper are generated using the commented out line below
+        # which will only report and average metrics from first n_envs initial condition and seeds
+        # fortunately this won't invalidate our conclusion since
+        # 1. This bug only affects the variance of metrics, not their mean
+        # 2. All baseline methods are evaluated using the same code
+        # to completely reproduce reported numbers, uncomment this line:
+        # for i in range(len(self.env_fns)):
+        # and comment out this line
+        for i in range(n_inits):
+            seed = self.env_seeds[i]
+            prefix = self.env_prefixs[i]
+            max_reward = np.max(all_rewards[i])
+            max_rewards[prefix].append(max_reward)
+            log_data[prefix+f'sim_max_reward_{seed}'] = max_reward
+
+            # visualize sim
+            video_path = all_video_paths[i]
+            if video_path is not None:
+                sim_video = wandb.Video(video_path)
+                log_data[prefix+f'sim_video_{seed}'] = sim_video
+
+        # log aggregate metrics
+        for prefix, value in max_rewards.items():
+            name = prefix+'mean_score'
+            value = np.mean(value)
+            log_data[name] = value
+
+        return log_data, trajs
 
     def undo_transform_action(self, action):
         raw_shape = action.shape

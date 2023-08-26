@@ -2,6 +2,8 @@ from typing import Dict, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import random
+import time
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
@@ -21,6 +23,8 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             n_obs_steps,
             num_inference_steps=None,
             obs_as_cond=False,
+            guidance_weight=0.0,
+            p_uncond=0.2, 
             pred_action_steps_only=False,
             # parameters passed to step
             **kwargs):
@@ -45,6 +49,8 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         self.n_obs_steps = n_obs_steps
         self.obs_as_cond = obs_as_cond
         self.pred_action_steps_only = pred_action_steps_only
+        self.guidance_weight = guidance_weight
+        self.p_uncond = p_uncond
         self.kwargs = kwargs
 
         if num_inference_steps is None:
@@ -54,7 +60,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
     # ========= inference  ============
     def conditional_sample(self, 
             condition_data, condition_mask,
-            cond=None, generator=None,
+            cond=None, cond_null=None, generator=None,
             # keyword arguments to scheduler.step
             **kwargs
             ):
@@ -75,7 +81,11 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             trajectory[condition_mask] = condition_data[condition_mask]
 
             # 2. predict model output
-            model_output = model(trajectory, t, cond)
+            conditional_output = model(trajectory, t, cond)
+            unconditional_output = model(trajectory, t, cond_null)
+            #model_output = unconditional_output + self.guidance_weight * (conditional_output - unconditional_output)
+            model_output = unconditional_output #- 1 * (conditional_output - unconditional_output)
+
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -90,7 +100,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.tensor] = None) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -99,6 +109,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         assert 'obs' in obs_dict
         assert 'past_action' not in obs_dict # not implemented yet
         nobs = self.normalizer['obs'].normalize(obs_dict['obs'])
+        
         B, _, Do = nobs.shape
         To = self.n_obs_steps
         assert Do == self.obs_dim
@@ -115,6 +126,9 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         cond_mask = None
         if self.obs_as_cond:
             cond = nobs[:,:To]
+            null_goal = torch.zeros_like(goal_dict['goal'])
+            cond_null = torch.cat([cond, null_goal[:,:To]], dim=-1)
+            cond = torch.cat([cond, goal_dict['goal'][:,:To]], dim=-1)
             shape = (B, T, Da)
             if self.pred_action_steps_only:
                 shape = (B, self.n_action_steps, Da)
@@ -133,6 +147,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             cond_data, 
             cond_mask,
             cond=cond,
+            cond_null=cond_null,
             **self.kwargs)
         
         # unnormalize prediction
@@ -177,12 +192,17 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         nbatch = self.normalizer.normalize(batch)
         obs = nbatch['obs']
         action = nbatch['action']
-
+        goal = nbatch['goal']
+        null_goal = torch.zeros_like(goal)
         # handle different ways of passing observation
         cond = None
         trajectory = action
         if self.obs_as_cond:
             cond = obs[:,:self.n_obs_steps,:]
+            if random.random() > self.p_uncond:
+                cond = torch.cat([cond, goal[:,:self.n_obs_steps,:]], dim=-1)
+            else:
+                cond = torch.cat([cond, null_goal[:,:self.n_obs_steps,:]], dim=-1)
             if self.pred_action_steps_only:
                 To = self.n_obs_steps
                 start = To - 1
