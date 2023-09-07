@@ -61,6 +61,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
     def conditional_sample(self, 
             condition_data, condition_mask,
             cond=None, cond_null=None, generator=None,
+            other_cond=None,
             # keyword arguments to scheduler.step
             **kwargs
             ):
@@ -83,8 +84,10 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             # 2. predict model output
             conditional_output = model(trajectory, t, cond)
             unconditional_output = model(trajectory, t, cond_null)
+            conditional_other_goal = model(trajectory, t, other_cond)
             #model_output = unconditional_output + self.guidance_weight * (conditional_output - unconditional_output)
-            model_output = unconditional_output #- 1 * (conditional_output - unconditional_output)
+            #model_output = unconditional_output + 1 * (conditional_output - unconditional_output)
+            model_output = unconditional_output + 1 * (conditional_output - conditional_other_goal)
 
 
             # 3. compute previous image: x_t -> x_t-1
@@ -100,7 +103,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.tensor] = None) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.tensor] = None, other_goal: Dict[str, torch.tensor] = None) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -128,6 +131,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             cond = nobs[:,:To]
             null_goal = torch.zeros_like(goal_dict['goal'])
             cond_null = torch.cat([cond, null_goal[:,:To]], dim=-1)
+            other_cond = torch.cat([cond, other_goal['goal'][:,:To]], dim=-1)
             cond = torch.cat([cond, goal_dict['goal'][:,:To]], dim=-1)
             shape = (B, T, Da)
             if self.pred_action_steps_only:
@@ -148,6 +152,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             cond_mask,
             cond=cond,
             cond_null=cond_null,
+            other_cond=other_cond,
             **self.kwargs)
         
         # unnormalize prediction

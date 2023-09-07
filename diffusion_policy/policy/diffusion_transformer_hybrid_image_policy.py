@@ -1,8 +1,9 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import random
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
@@ -15,6 +16,7 @@ from robomimic.algo import algo_factory
 from robomimic.algo.algo import PolicyAlgo
 import robomimic.utils.obs_utils as ObsUtils
 import robomimic.models.base_nets as rmbn
+import robomimic.models.obs_core as rmoc
 import diffusion_policy.model.vision.crop_randomizer as dmvc
 from diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
 
@@ -117,13 +119,11 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
                     num_groups=x.num_features//16, 
                     num_channels=x.num_features)
             )
-            # obs_encoder.obs_nets['agentview_image'].nets[0].nets
         
-        # obs_encoder.obs_randomizers['agentview_image']
         if eval_fixed_crop:
             replace_submodules(
                 root_module=obs_encoder,
-                predicate=lambda x: isinstance(x, rmbn.CropRandomizer),
+                predicate=lambda x: isinstance(x, rmoc.CropRandomizer),
                 func=lambda x: dmvc.CropRandomizer(
                     input_shape=x.input_shape,
                     crop_height=x.crop_height,
@@ -137,7 +137,9 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         obs_feature_dim = obs_encoder.output_shape()[0]
         input_dim = action_dim if obs_as_cond else (obs_feature_dim + action_dim)
         output_dim = input_dim
-        cond_dim = obs_feature_dim if obs_as_cond else 0
+
+        # double the input dimension if conditioning on goal and obs
+        cond_dim = 2 * obs_feature_dim if obs_as_cond else 0
 
         model = TransformerForDiffusion(
             input_dim=input_dim,
@@ -183,10 +185,15 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
     # ========= inference  ============
     def conditional_sample(self, 
             condition_data, condition_mask,
-            cond=None, generator=None,
+            goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
             # keyword arguments to scheduler.step
             **kwargs
             ):
+        # goal cond = conditioned on all states and all target goal states
+        # other goals cond obs = conditioned on observer pov and other goals from observer pov
+        # goal cond obs = conditioned on observer pov and target goal from observer pov
+        # uncond = conditioned on all states only
+
         model = self.model
         scheduler = self.noise_scheduler
 
@@ -204,7 +211,13 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             trajectory[condition_mask] = condition_data[condition_mask]
 
             # 2. predict model output
-            model_output = model(trajectory, t, cond)
+            conditional_output = model(trajectory, t, goal_cond)
+            uncond = model(trajectory, t, uncond)
+            other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
+
+            conditional_diff = sum([(conditional_output - other_goal_conditional_output) for other_goal_conditional_output in other_goals_conditional_output])
+
+            model_output = uncond + 1 * conditional_diff
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -219,7 +232,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.Tensor], other_goals_dict: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -227,6 +240,11 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         assert 'past_action' not in obs_dict # not implemented yet
         # normalize input
         nobs = self.normalizer.normalize(obs_dict)
+        ngoal = self.normalizer.normalize(goal_dict)
+        null_goal = dict_apply(ngoal, lambda x: torch.zeros_like(x))
+        null_ngoal = self.normalizer.normalize(null_goal)
+        nother_goals = [self.normalizer.normalize(other_goal_dict) for other_goal_dict in other_goals_dict]
+
         value = next(iter(nobs.values()))
         B, To = value.shape[:2]
         T = self.horizon
@@ -244,9 +262,25 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         cond_mask = None
         if self.obs_as_cond:
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+            this_ngoal = dict_apply(ngoal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+            this_other_goals = [dict_apply(other_goal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:])) for other_goal in nother_goals]
+            this_null_ngoal = dict_apply(null_ngoal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+
             nobs_features = self.obs_encoder(this_nobs)
+            goal_features = self.obs_encoder(this_ngoal)
+            null_goal_features = self.obs_encoder(this_null_ngoal)
+            other_goals_features = [self.obs_encoder(other_goal) for other_goal in this_other_goals]
+
             # reshape back to B, To, Do
-            cond = nobs_features.reshape(B, To, -1)
+            obs_root = nobs_features.reshape(B, To, -1)
+            goal_root = goal_features.reshape(B, To, -1)
+            other_goals_root = [other_goal_features.reshape(B, To, -1) for other_goal_features in other_goals_features]
+            null_goal_root = null_goal_features.reshape(B, To, -1)
+
+            goal_cond = torch.cat([obs_root, goal_root], dim=-1)
+            uncond = torch.cat([obs_root, null_goal_root], dim=-1)
+            other_goals_cond = [torch.cat([obs_root, other_goal_root], dim=-1) for other_goal_root in other_goals_root]
+
             shape = (B, T, Da)
             if self.pred_action_steps_only:
                 shape = (B, self.n_action_steps, Da)
@@ -266,9 +300,11 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
 
         # run sampling
         nsample = self.conditional_sample(
-            cond_data, 
+            cond_data,
             cond_mask,
-            cond=cond,
+            goal_cond=goal_cond,
+            other_goals_cond = other_goals_cond, 
+            uncond = uncond,
             **self.kwargs)
         
         # unnormalize prediction
@@ -315,6 +351,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         # normalize input
         assert 'valid_mask' not in batch
         nobs = self.normalizer.normalize(batch['obs'])
+        ngoal = self.normalizer.normalize(batch['goal'])
         nactions = self.normalizer['action'].normalize(batch['action'])
         batch_size = nactions.shape[0]
         horizon = nactions.shape[1]
@@ -327,9 +364,24 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             # reshape B, T, ... to B*T
             this_nobs = dict_apply(nobs, 
                 lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+            
+            this_ngoal = dict_apply(ngoal,
+                lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+
             nobs_features = self.obs_encoder(this_nobs)
+            ngoal_features = self.obs_encoder(this_ngoal)
+            null_goal_features = self.obs_encoder(dict_apply(this_ngoal, lambda x: torch.zeros_like(x)))
+
+            obs_root = nobs_features.reshape(batch_size, To, -1)
+            goal_root = ngoal_features.reshape(batch_size, To, -1)
+            null_goal_root = null_goal_features.reshape(batch_size, To, -1)
+
+            if random.random() < .2:
+                cond = torch.cat([obs_root, null_goal_root], dim=-1)
+            else:
+                cond = torch.cat([obs_root, goal_root], dim=-1)
+
             # reshape back to B, T, Do
-            cond = nobs_features.reshape(batch_size, To, -1)
             if self.pred_action_steps_only:
                 start = To - 1
                 end = start + self.n_action_steps

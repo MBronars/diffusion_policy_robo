@@ -27,14 +27,16 @@ def main(cfg: OmegaConf):
     cls = hydra.utils.get_class(cfg._target_)
     workspace: TrainRobomimicLowdimWorkspace = cls(cfg)   
 
-    data_writer = h5py.File("/home/MBronars/Documents/ICML_paper/datasets/diff_low_dim_long_g-10.hdf5", "w")
+    data_writer = h5py.File("/home/MBronars/Documents/ICML_paper/datasets/pickPlace_cfg.hdf5", "w")
     data_grp = data_writer.create_group("data")
     total_samples = 0
 
     for i in range(1):
 
-        # trajs = workspace.eval(ckpt_path="/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.07.24/16.43.41_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0150-test_mean_score=1.000.ckpt")
         trajs = workspace.eval(ckpt_path="/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.08.18/04.01.05_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0100-test_mean_score=1.000.ckpt")
+
+        # trajs = workspace.eval(ckpt_path="/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.07.24/16.43.41_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0150-test_mean_score=1.000.ckpt")
+        # trajs = workspace.eval(ckpt_path="/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.08.27/02.10.44_train_diffusion_transformer_lowdim_long_pickplace_lowdim/checkpoints/epoch=0400-test_mean_score=0.240.ckpt")
         # assert isinstance(traj, dict)
         # assert isinstance(traj["obs"], dict)
         for i in range(len(trajs)):

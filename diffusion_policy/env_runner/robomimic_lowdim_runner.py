@@ -235,11 +235,12 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
     def get_goal(self, color = None):
         obs_keys = [
                 'object', 
-                'eef_pos', 
-                'eef_quat', 
-                'gripper_qpos']
+                'robot0_eef_pos', 
+                'robot0_eef_quat', 
+                'robot0_gripper_qpos']
         # set random seed based on current time
         np.random.seed(int(time.time()))
+        color = 'r'
         with h5py.File(self.dataset_path, 'r') as f:
             final_goal = None
             while final_goal is None:

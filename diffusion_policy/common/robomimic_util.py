@@ -41,7 +41,7 @@ class RobomimicAbsoluteActionConverter:
 
         self.env = env
         self.abs_env = abs_env
-        self.file = h5py.File(dataset_path, 'r')
+        self.file = h5py.File(dataset_path, 'r+')
     
     def __len__(self):
         return len(self.file['data'])
@@ -99,8 +99,9 @@ class RobomimicAbsoluteActionConverter:
 
         # generate abs actions
         abs_actions = self.convert_actions(states, actions)
+        demo['actions'][:] = abs_actions
         return abs_actions
-
+    
     def convert_and_eval_idx(self, idx):
         env = self.env
         abs_env = self.abs_env

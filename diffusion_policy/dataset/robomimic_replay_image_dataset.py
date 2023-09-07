@@ -13,6 +13,7 @@ from filelock import FileLock
 from threadpoolctl import threadpool_limits
 import concurrent.futures
 import multiprocessing
+import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 from diffusion_policy.common.pytorch_util import dict_apply
 from diffusion_policy.dataset.base_dataset import BaseImageDataset, LinearNormalizer
@@ -75,11 +76,9 @@ class RobomimicReplayImageDataset(BaseImageDataset):
                         shutil.rmtree(cache_zarr_path)
                         raise e
                 else:
-                    print('Loading cached ReplayBuffer from Disk.')
                     with zarr.ZipStore(cache_zarr_path, mode='r') as zip_store:
                         replay_buffer = ReplayBuffer.copy_from_store(
                             src_store=zip_store, store=zarr.MemoryStore())
-                    print('Loaded!')
         else:
             replay_buffer = _convert_robomimic_to_replay(
                 store=zarr.MemoryStore(), 
@@ -193,14 +192,13 @@ class RobomimicReplayImageDataset(BaseImageDataset):
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         threadpool_limits(1)
         data = self.sampler.sample_sequence(idx)
-
         # to save RAM, only return first n_obs_steps of OBS
         # since the rest will be discarded anyway.
         # when self.n_obs_steps is None
         # this slice does nothing (takes all)
         T_slice = slice(self.n_obs_steps)
-
         obs_dict = dict()
+        goal_dict = dict()
         for key in self.rgb_keys:
             # move channel last to channel first
             # T,H,W,C
@@ -208,14 +206,16 @@ class RobomimicReplayImageDataset(BaseImageDataset):
             obs_dict[key] = np.moveaxis(data[key][T_slice],-1,1
                 ).astype(np.float32) / 255.
             # T,C,H,W
+            goal_dict[key] = np.moveaxis(data['goal_' + key][T_slice],-1,1).astype(np.float32) / 255.
             del data[key]
         for key in self.lowdim_keys:
             obs_dict[key] = data[key][T_slice].astype(np.float32)
-            del data[key]
-
+            goal_dict[key] = data['goal_' + key][T_slice].astype(np.float32)
+            del data[key]        
         torch_data = {
             'obs': dict_apply(obs_dict, torch.from_numpy),
-            'action': torch.from_numpy(data['action'].astype(np.float32))
+            'action': torch.from_numpy(data['action'].astype(np.float32)),
+            'goal': dict_apply(goal_dict, torch.from_numpy),
         }
         return torch_data
 
@@ -232,7 +232,9 @@ def _convert_actions(raw_actions, abs_action, rotation_transformer):
         pos = raw_actions[...,:3]
         rot = raw_actions[...,3:6]
         gripper = raw_actions[...,6:]
+        print(rot.shape)
         rot = rotation_transformer.forward(rot)
+        print(rot.shape)
         raw_actions = np.concatenate([
             pos, rot, gripper
         ], axis=-1).astype(np.float32)
@@ -289,10 +291,15 @@ def _convert_robomimic_to_replay(store, shape_meta, dataset_path, abs_action, ro
             if key == 'action':
                 data_key = 'actions'
             this_data = list()
+            goal_data = list()
             for i in range(len(demos)):
                 demo = demos[f'demo_{i}']
                 this_data.append(demo[data_key][:].astype(np.float32))
+                goal_item = np.zeros_like(demo[data_key][:].astype(np.float32))
+                goal_item[:] = demo[data_key][-1].astype(np.float32)
+                goal_data.append(goal_item)
             this_data = np.concatenate(this_data, axis=0)
+            goal_data = np.concatenate(goal_data, axis=0)
             if key == 'action':
                 this_data = _convert_actions(
                     raw_actions=this_data,
@@ -310,7 +317,15 @@ def _convert_robomimic_to_replay(store, shape_meta, dataset_path, abs_action, ro
                 compressor=None,
                 dtype=this_data.dtype
             )
-        
+            if key != 'action':
+                _ = data_group.array(
+                    name='goal_' + key,
+                    data=goal_data,
+                    shape=goal_data.shape,
+                    chunks=goal_data.shape,
+                    compressor=None,
+                    dtype=goal_data.dtype
+                )        
         def img_copy(zarr_arr, zarr_idx, hdf5_arr, hdf5_idx):
             try:
                 zarr_arr[zarr_idx] = hdf5_arr[hdf5_idx]
@@ -319,7 +334,7 @@ def _convert_robomimic_to_replay(store, shape_meta, dataset_path, abs_action, ro
                 return True
             except Exception as e:
                 return False
-        
+                    
         with tqdm(total=n_steps*len(rgb_keys), desc="Loading image data", mininterval=1.0) as pbar:
             # one chunk per thread, therefore no synchronization needed
             with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
@@ -331,6 +346,13 @@ def _convert_robomimic_to_replay(store, shape_meta, dataset_path, abs_action, ro
                     this_compressor = Jpeg2k(level=50)
                     img_arr = data_group.require_dataset(
                         name=key,
+                        shape=(n_steps,h,w,c),
+                        chunks=(1,h,w,c),
+                        compressor=this_compressor,
+                        dtype=np.uint8
+                    )
+                    goal_arr = data_group.require_dataset(
+                        name='goal_' + key,
                         shape=(n_steps,h,w,c),
                         chunks=(1,h,w,c),
                         compressor=this_compressor,
@@ -353,6 +375,9 @@ def _convert_robomimic_to_replay(store, shape_meta, dataset_path, abs_action, ro
                             futures.add(
                                 executor.submit(img_copy, 
                                     img_arr, zarr_idx, hdf5_arr, hdf5_idx))
+                            futures.add(
+                                executor.submit(img_copy, 
+                                    goal_arr, zarr_idx, hdf5_arr, len(hdf5_arr)-1))
                 completed, futures = concurrent.futures.wait(futures)
                 for f in completed:
                     if not f.result():
