@@ -27,7 +27,7 @@ def main(cfg: OmegaConf):
     cls = hydra.utils.get_class(cfg._target_)
     workspace: TrainRobomimicLowdimWorkspace = cls(cfg)   
 
-    data_writer = h5py.File("/home/MBronars/Documents/ICML_paper/datasets/pickPlace_cfg.hdf5", "w")
+    data_writer = h5py.File("/home/MBronars/Documents/ICML_paper/datasets/stack_cond_diff_red.hdf5", "w")
     data_grp = data_writer.create_group("data")
     total_samples = 0
 

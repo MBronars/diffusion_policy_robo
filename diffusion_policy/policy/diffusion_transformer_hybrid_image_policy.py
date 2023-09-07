@@ -217,7 +217,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
 
             conditional_diff = sum([(conditional_output - other_goal_conditional_output) for other_goal_conditional_output in other_goals_conditional_output])
 
-            model_output = uncond + 1 * conditional_diff
+            model_output = uncond + 2 * (conditional_output - uncond)
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(

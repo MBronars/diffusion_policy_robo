@@ -18,6 +18,8 @@ from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
 from diffusion_policy.gym_util.video_recording_wrapper import VideoRecordingWrapper, VideoRecorder
 from diffusion_policy.model.common.rotation_transformer import RotationTransformer
 
+from robosuite.environments.manipulation.stack import Stack
+
 from diffusion_policy.policy.base_lowdim_policy import BaseLowdimPolicy
 from diffusion_policy.common.pytorch_util import dict_apply
 from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
@@ -26,6 +28,7 @@ import robomimic.utils.file_utils as FileUtils
 import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.obs_utils as ObsUtils
 import robomimic.utils.tensor_utils as TensorUtils
+
 
 
 def create_env(env_meta, obs_keys):
@@ -233,41 +236,53 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         self.dataset_path = dataset_path
     
     def get_goal(self, color = None):
+
         obs_keys = [
                 'object', 
                 'robot0_eef_pos', 
                 'robot0_eef_quat', 
                 'robot0_gripper_qpos']
-        # set random seed based on current time
-        np.random.seed(int(time.time()))
-        color = 'r'
-        with h5py.File(self.dataset_path, 'r') as f:
-            final_goal = None
-            while final_goal is None:
-                # get last obs from random demo
-                rand_demo = np.random.randint(0, len(f['data']))
-                raw_obs = f[f'data/demo_{rand_demo}/obs']
-                #get data from  <HDF5 dataset "object": shape (285, 23), type "<f8">
-                # convert goal dict to numpy array
-                obs = np.concatenate([
-                    raw_obs[key][:] for key in obs_keys
-                    ], axis=-1).astype(np.float32)
+        # # set random seed based on current time
+        # np.random.seed(int(time.time()))
+        # color = 'r'
+        # with h5py.File(self.dataset_path, 'r') as f:
+        #     final_goal = None
+        #     while final_goal is None:
+        #         # get last obs from random demo
+        #         rand_demo = np.random.randint(0, len(f['data']))
+        #         raw_obs = f[f'data/demo_{rand_demo}/obs']
+        #         #get data from  <HDF5 dataset "object": shape (285, 23), type "<f8">
+        #         # convert goal dict to numpy array
+        #         obs = np.concatenate([
+        #             raw_obs[key][:] for key in obs_keys
+        #             ], axis=-1).astype(np.float32)
                 
-                #goal = np.zeros_like(obs)
-                last_obs = obs[-1]
-                #goal[:] = last_obs
-                goal = last_obs
-                heights = goal[[2, 9]]
-                if color is None:
-                    final_goal = goal
-                elif color == 'r':
-                    if heights[0] > heights[1]:
-                        final_goal = goal
-                elif color == 'g':
-                    if heights[0] < heights[1]:
-                        final_goal = goal
-        return goal
-
+        #         #goal = np.zeros_like(obs)
+        #         last_obs = obs[-1]
+        #         #goal[:] = last_obs
+        #         goal = last_obs
+        #         heights = goal[[2, 9]]
+        #         if color is None:
+        #             final_goal = goal
+        #         elif color == 'r':
+        #             if heights[0] > heights[1]:
+        #                 final_goal = goal
+        #         elif color == 'g':
+        #             if heights[0] < heights[1]:
+        #                 final_goal = goal
+        goal, other_goal = Stack._get_goal()
+        goal_obs = np.concatenate([
+            goal[key][:] for key in obs_keys
+            ], axis=-1).astype(np.float32)
+        other_goal_obs = np.concatenate([
+            other_goal[key][:] for key in obs_keys
+            ], axis=-1).astype(np.float32)
+        #last_goal_obs = goal_obs[-1]
+        #last_other_goal_obs = other_goal_obs[-1]
+        #goal_obs[:] = last_goal_obs
+        #other_goal_obs[:] = last_other_goal_obs
+        
+        return goal_obs, other_goal_obs
 
 
 
@@ -286,10 +301,12 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         all_rewards = [None] * n_inits
 
         # Generate n_inits different goals and stack them along the first dimension
-        repeated_goal = np.stack([self.get_goal() for _ in range(n_inits)], axis=0)
+        repeated_goal = np.stack([self.get_goal()[0] for _ in range(n_inits)], axis=0)
+        repeated_other_goal = np.stack([self.get_goal()[1] for _ in range(n_inits)], axis=0)
 
         # Repeat the repeated_goal array n_obs_steps times along the middle dimension
         all_goals = np.repeat(repeated_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
+        all_other_goals = np.repeat(repeated_other_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
 
 
         for chunk_idx in range(n_chunks):
@@ -319,6 +336,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 leave=False, mininterval=self.tqdm_interval_sec)
             
             goal = all_goals[this_global_slice]
+            other_goal = all_other_goals[this_global_slice]
 
             done = False
             while not done:
@@ -329,6 +347,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 }
                 np_goal_dict = {
                     'goal': goal[:,:self.n_obs_steps].astype(np.float32)
+                }
+
+                np_other_goal_dict = {
+                    'goal': other_goal[:,:self.n_obs_steps].astype(np.float32)
                 }
                 if self.past_action and (past_action is not None):
                     # TODO: not tested
@@ -343,10 +365,14 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 goal_dict = dict_apply(np_goal_dict, 
                     lambda x: torch.from_numpy(x).to(
                         device=device))
+                
+                other_goal_dict = dict_apply(np_other_goal_dict,
+                    lambda x: torch.from_numpy(x).to(
+                        device=device))
 
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict, goal_dict)
+                    action_dict = policy.predict_action(obs_dict, goal_dict, other_goal_dict)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -418,13 +444,15 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         n_inits = len(self.env_init_fn_dills)
         n_chunks = math.ceil(n_inits / n_envs)
 
-        temp_goal = self.get_goal(color = 'r')
+        temp_goal, other_goal = self.get_goal(color = 'r')
 
         # Generate n_inits different goals and stack them along the first dimension
         repeated_goal = np.stack([temp_goal for _ in range(n_inits)], axis=0)
+        repeated_other_goal = np.stack([other_goal for _ in range(n_inits)], axis=0)
 
         # Repeat the repeated_goal array n_obs_steps times along the middle dimension
         all_goals = np.repeat(repeated_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
+        all_other_goals = np.repeat(repeated_other_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
 
         # allocate data
         all_video_paths = [None] * n_inits
@@ -455,6 +483,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             traj = dict(actions=[], rewards=[], dones=[], states=[], obs=[], next_obs=[])
 
             goal = all_goals[this_global_slice]
+            other_goal = all_other_goals[this_global_slice]
 
             env_name = self.env_meta['env_name']
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Lowdim {chunk_idx+1}/{n_chunks}", 
@@ -472,6 +501,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                     'goal': goal[:,:self.n_obs_steps].astype(np.float32)
                 }
 
+                np_other_goal_dict = {
+                    'goal': other_goal[:,:self.n_obs_steps].astype(np.float32)
+                }
+
                 if self.past_action and (past_action is not None):
                     # TODO: not tested
                     np_obs_dict['past_action'] = past_action[
@@ -485,10 +518,14 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 goal_dict = dict_apply(np_goal_dict, 
                     lambda x: torch.from_numpy(x).to(
                         device=device))
+                
+                other_goal_dict = dict_apply(np_other_goal_dict,
+                    lambda x: torch.from_numpy(x).to(
+                        device=device))
 
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict, goal_dict)
+                    action_dict = policy.predict_action(obs_dict, goal_dict, other_goal_dict)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,

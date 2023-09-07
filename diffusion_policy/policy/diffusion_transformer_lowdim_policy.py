@@ -87,7 +87,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             conditional_other_goal = model(trajectory, t, other_cond)
             #model_output = unconditional_output + self.guidance_weight * (conditional_output - unconditional_output)
             #model_output = unconditional_output + 1 * (conditional_output - unconditional_output)
-            model_output = unconditional_output + 1 * (conditional_output - conditional_other_goal)
+            model_output = conditional_output + 1 * (conditional_output - conditional_other_goal)
 
 
             # 3. compute previous image: x_t -> x_t-1
