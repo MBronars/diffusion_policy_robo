@@ -65,7 +65,10 @@ class RobomimicImageRunner(BaseImageRunner):
             past_action=False,
             abs_action=False,
             tqdm_interval_sec=5.0,
-            n_envs=None
+            n_envs=None,
+            alpha = 1.0,
+            beta = 0.25,
+            gamma = 0.01
         ):
         super().__init__(output_dir)
 
@@ -238,6 +241,9 @@ class RobomimicImageRunner(BaseImageRunner):
         self.rotation_transformer = rotation_transformer
         self.abs_action = abs_action
         self.tqdm_interval_sec = tqdm_interval_sec
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
 
     def run(self, policy: BaseImagePolicy):
         device = policy.device
@@ -252,6 +258,16 @@ class RobomimicImageRunner(BaseImageRunner):
         # allocate data
         all_video_paths = [None] * n_inits
         all_rewards = [None] * n_inits
+
+        temp_goal, other_goals = self.get_goal(color = 'r')
+
+        # Generate n_inits different goals and stack them along the first dimension
+        repeated_goal = np.stack([temp_goal for _ in range(n_inits)], axis=0)
+        repeated_other_goal = np.stack([other_goals for _ in range(n_inits)], axis=0)
+
+        # Repeat the repeated_goal array n_obs_steps times along the middle dimension
+        all_goals = np.repeat(repeated_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
+        all_other_goals = np.repeat(repeated_other_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
 
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
@@ -272,6 +288,8 @@ class RobomimicImageRunner(BaseImageRunner):
 
             # start rollout
             obs = env.reset()
+            alpha = self.alpha
+            beta = self.beta
             past_action = None
             policy.reset()
 
@@ -295,7 +313,7 @@ class RobomimicImageRunner(BaseImageRunner):
 
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict)
+                    action_dict = policy.predict_action(obs_dict, goal_dict, alpha, beta)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -317,6 +335,10 @@ class RobomimicImageRunner(BaseImageRunner):
 
                 # update pbar
                 pbar.update(action.shape[1])
+
+                # update beta and lam
+                alpha = alpha * self.gamma
+                beta = beta * self.gamma
             pbar.close()
 
             # collect data for this round

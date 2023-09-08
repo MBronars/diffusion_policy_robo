@@ -24,7 +24,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             num_inference_steps=None,
             obs_as_cond=False,
             guidance_weight=0.0,
-            p_uncond=0.2, 
+            p_uncond=0.25, 
             pred_action_steps_only=False,
             # parameters passed to step
             **kwargs):
@@ -62,6 +62,8 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             condition_data, condition_mask,
             cond=None, cond_null=None, generator=None,
             other_cond=None,
+            alpha=-0.25,
+            beta=-0.25,
             # keyword arguments to scheduler.step
             **kwargs
             ):
@@ -86,9 +88,10 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             unconditional_output = model(trajectory, t, cond_null)
             conditional_other_goal = model(trajectory, t, other_cond)
             #model_output = unconditional_output + self.guidance_weight * (conditional_output - unconditional_output)
-            #model_output = unconditional_output + 1 * (conditional_output - unconditional_output)
-            model_output = conditional_output + 1 * (conditional_output - conditional_other_goal)
+            #model_output = unconditional_output + 3 * (conditional_output - unconditional_output)
+            #model_output = conditional_output + .5 * (conditional_output - conditional_other_goal)
 
+            model_output = (1 - alpha - beta) * conditional_output + alpha * unconditional_output + beta * conditional_other_goal
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -103,12 +106,12 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.tensor] = None, other_goal: Dict[str, torch.tensor] = None) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.tensor] = None, other_goal: Dict[str, torch.tensor] = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
         """
-
+        
         assert 'obs' in obs_dict
         assert 'past_action' not in obs_dict # not implemented yet
         nobs = self.normalizer['obs'].normalize(obs_dict['obs'])
@@ -153,6 +156,8 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             cond=cond,
             cond_null=cond_null,
             other_cond=other_cond,
+            alpha=alpha,
+            beta=beta,
             **self.kwargs)
         
         # unnormalize prediction

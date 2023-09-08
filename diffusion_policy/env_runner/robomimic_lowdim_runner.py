@@ -74,7 +74,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             past_action=False,
             abs_action=False,
             tqdm_interval_sec=5.0,
-            n_envs=None
+            n_envs=None,
+            alpha=-0.25,
+            beta=-0.25,
+            gamma=0.1
         ):
         """
         Assuming:
@@ -234,6 +237,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         self.abs_action = abs_action
         self.tqdm_interval_sec = tqdm_interval_sec
         self.dataset_path = dataset_path
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        
     
     def get_goal(self, color = None):
 
@@ -331,6 +338,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             past_action = None
             policy.reset()
 
+            alpha = self.alpha
+            beta = self.beta
+
             env_name = self.env_meta['env_name']
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Lowdim {chunk_idx+1}/{n_chunks}", 
                 leave=False, mininterval=self.tqdm_interval_sec)
@@ -372,7 +382,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
 
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict, goal_dict, other_goal_dict)
+                    action_dict = policy.predict_action(obs_dict, goal_dict, other_goal_dict, alpha=alpha, beta=beta)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -396,6 +406,11 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
 
                 # update pbar
                 pbar.update(action.shape[1])
+
+                #update beta and lam
+                beta = beta * self.gamma
+                alpha = alpha * self.gamma
+
             pbar.close()
 
             # collect data for this round

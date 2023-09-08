@@ -186,6 +186,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
     def conditional_sample(self, 
             condition_data, condition_mask,
             goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
+            alpha=1.0, beta=.5, lam = 0.5,
             # keyword arguments to scheduler.step
             **kwargs
             ):
@@ -215,9 +216,11 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             uncond = model(trajectory, t, uncond)
             other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
 
+            conditional_other = sum(other_goals_conditional_output)
+
             conditional_diff = sum([(conditional_output - other_goal_conditional_output) for other_goal_conditional_output in other_goals_conditional_output])
 
-            model_output = uncond + 2 * (conditional_output - uncond)
+            model_output = alpha * conditional_output - beta * uncond - lam * conditional_other
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -232,7 +235,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.Tensor], other_goals_dict: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.Tensor], other_goals_dict: List[Dict[str, torch.Tensor]], alpha=1.0, beta=.5, lam = 0.5,) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -305,6 +308,9 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             goal_cond=goal_cond,
             other_goals_cond = other_goals_cond, 
             uncond = uncond,
+            alpha = alpha, 
+            beta = beta, 
+            lam =  lam,
             **self.kwargs)
         
         # unnormalize prediction
