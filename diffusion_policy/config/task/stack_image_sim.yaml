@@ -1,5 +1,5 @@
 _target_: diffusion_policy.workspace.train_diffusion_transformer_hybrid_workspace.TrainDiffusionTransformerHybridWorkspace
-eval_save: /home/MBronars/Documents/ICML_paper/datasets/temp.hdf5
+eval_save: /srv/rl2-lab/flash8/mbronars3/temp.hdf5
 checkpoint:
   save_last_ckpt: true
   save_last_snapshot: false
@@ -10,7 +10,7 @@ checkpoint:
     monitor_key: test_mean_score
 dataloader:
   batch_size: 64
-  num_workers: 8
+  num_workers: 16
   persistent_workers: false
   pin_memory: true
   shuffle: true
@@ -198,9 +198,9 @@ task:
     n_test_vis: 4
     n_train: 6
     n_train_vis: 2
-    alpha: -.25
-    beta: -.25
-    gamma: 0.1
+    alpha: 0
+    beta: 0
+    gamma: 1
     past_action: false
     render_obs_key: agentview_image
     shape_meta:
@@ -286,7 +286,7 @@ training:
   val_every: 1
 val_dataloader:
   batch_size: 64
-  num_workers: 8
+  num_workers: 16
   persistent_workers: false
   pin_memory: true
   shuffle: false
