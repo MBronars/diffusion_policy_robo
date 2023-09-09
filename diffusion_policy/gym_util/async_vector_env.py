@@ -557,6 +557,9 @@ class AsyncVectorEnv(VectorEnv):
     def render(self, *args, **kwargs):
         return self.call('render', *args, **kwargs)
 
+    def _check_success(self):
+        return self.call('check_success')
+
 
 
 def _worker(index, env_fn, pipe, parent_pipe, shared_memory, error_queue):

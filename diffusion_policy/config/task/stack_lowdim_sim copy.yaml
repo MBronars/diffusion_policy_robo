@@ -21,7 +21,7 @@ ema:
   min_value: 0.0
   power: 0.75
   update_after_step: 0
-eval_save: /home/MBronars/Documents/ICML_paper/datasets/alpha0_beta0_gamma0.01.hdf5
+eval_save: /home/MBronars/Documents/ICML_paper/datasets/temp.hdf5
 exp_name: default
 horizon: 10
 keypoint_visible_rate: 1.0
@@ -96,7 +96,7 @@ task:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
     abs_action: true
-    dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image.hdf5
+    dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image_200.hdf5
     horizon: 10
     obs_keys:
     - object
@@ -107,7 +107,7 @@ task:
     pad_before: 1
     seed: 42
     val_ratio: 0.02
-  dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image.hdf5
+  dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image_200.hdf5
   dataset_type: ph
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
@@ -115,17 +115,17 @@ task:
     alpha: 0
     beta: 0
     crf: 22
-    dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image.hdf5
+    dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image_200.hdf5
     fps: 10
     gamma: 1
     max_steps: 400
     n_action_steps: 8
-    n_envs: 10
+    n_envs: 28
     n_latency_steps: 0
     n_obs_steps: 2
-    n_test: 20
+    n_test: 50
     n_test_vis: 4
-    n_train: 0
+    n_train: 6
     n_train_vis: 2
     obs_keys:
     - object

@@ -9,7 +9,7 @@ checkpoint:
     mode: max
     monitor_key: test_mean_score
 dataloader:
-  batch_size: 64
+  batch_size: 128
   num_workers: 8
   persistent_workers: false
   pin_memory: true
@@ -37,7 +37,7 @@ logging:
   - lift_image
   - default
 multi_run:
-  run_dir: /srv/rl2-lab/flash8/mbronars3/workspace/results/ICRA/2block/data/outputs/2023.01.04/04.01.01_train_diffusion_transformer_hybrid_lift_image
+  run_dir: /home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2022.12.29/21.58.57_train_diffusion_transformer_stack_hybrid
   wandb_name_base: 2023.01.04-04.01.01_train_diffusion_transformer_hybrid_lift_image
 n_action_steps: 8
 n_latency_steps: 0
@@ -144,7 +144,7 @@ task:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: true
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_image_200.hdf5
+    dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image_200.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -182,25 +182,25 @@ task:
           - 7
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_image_200.hdf5
+  dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image_200.hdf5
   dataset_type: ph
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: true
     crf: 22
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_image_200.hdf5
+    dataset_path: /home/MBronars/workspace/datasets/ICRA/2block/2block_image_200.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
-    n_envs: 50
+    n_envs: 10
     n_obs_steps: 2
-    n_test: 50
+    n_test: 20
     n_test_vis: 4
-    n_train: 6
+    n_train: 0
     n_train_vis: 2
-    alpha: -.25
-    beta: -.25
-    gamma: 0.1
+    alpha: 0
+    beta: 0
+    gamma: 1
     past_action: false
     render_obs_key: agentview_image
     shape_meta:
@@ -268,9 +268,9 @@ task:
   task_name: lift_2block
 task_name: lift_2block_image
 training:
-  checkpoint_every: 50
-  debug: true
-  device: cuda:0
+  checkpoint_every: 10
+  debug: false
+  device: cuda
   gradient_accumulate_every: 1
   lr_scheduler: cosine
   lr_warmup_steps: 1000
@@ -283,9 +283,9 @@ training:
   seed: 42
   tqdm_interval_sec: 1.0
   use_ema: true
-  val_every: 1
+  val_every: 10
 val_dataloader:
-  batch_size: 64
+  batch_size: 128
   num_workers: 8
   persistent_workers: false
   pin_memory: true

@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -60,13 +60,16 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
     # ========= inference  ============
     def conditional_sample(self, 
             condition_data, condition_mask,
-            cond=None, cond_null=None, generator=None,
-            other_cond=None,
-            alpha=-0.25,
-            beta=-0.25,
+            goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
+            alpha=-.25, beta=-.25,
             # keyword arguments to scheduler.step
             **kwargs
             ):
+        # goal cond = conditioned on all states and all target goal states
+        # other goals cond obs = conditioned on observer pov and other goals from observer pov
+        # goal cond obs = conditioned on observer pov and target goal from observer pov
+        # uncond = conditioned on all states only
+
         model = self.model
         scheduler = self.noise_scheduler
 
@@ -75,23 +78,22 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             dtype=condition_data.dtype,
             device=condition_data.device,
             generator=generator)
-    
+
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
+
 
         for t in scheduler.timesteps:
             # 1. apply conditioning
             trajectory[condition_mask] = condition_data[condition_mask]
 
             # 2. predict model output
-            conditional_output = model(trajectory, t, cond)
-            unconditional_output = model(trajectory, t, cond_null)
-            conditional_other_goal = model(trajectory, t, other_cond)
-            #model_output = unconditional_output + self.guidance_weight * (conditional_output - unconditional_output)
-            #model_output = unconditional_output + 3 * (conditional_output - unconditional_output)
-            #model_output = conditional_output + .5 * (conditional_output - conditional_other_goal)
+            conditional_output = model(trajectory, t, goal_cond)
+            uncond_output = model(trajectory, t, uncond)
+            other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
+            conditional_other = sum(other_goals_conditional_output)
 
-            model_output = (1 - alpha - beta) * conditional_output + alpha * unconditional_output + beta * conditional_other_goal
+            model_output = (1- alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -106,7 +108,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.tensor] = None, other_goal: Dict[str, torch.tensor] = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals: torch.Tensor = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -132,10 +134,12 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         cond_mask = None
         if self.obs_as_cond:
             cond = nobs[:,:To]
-            null_goal = torch.zeros_like(goal_dict['goal'])
-            cond_null = torch.cat([cond, null_goal[:,:To]], dim=-1)
-            other_cond = torch.cat([cond, other_goal['goal'][:,:To]], dim=-1)
-            cond = torch.cat([cond, goal_dict['goal'][:,:To]], dim=-1)
+            goal = goal[:,:To]
+            other_goals = [other_goal[:,:To] for other_goal in other_goals]
+            null_goal = torch.zeros_like(goal)
+            cond_null = torch.cat([cond, null_goal], dim=-1)
+            other_conds = [torch.cat([cond, other_goal], dim=-1) for other_goal in other_goals]
+            cond = torch.cat([cond, goal], dim=-1)
             shape = (B, T, Da)
             if self.pred_action_steps_only:
                 shape = (B, self.n_action_steps, Da)
@@ -153,11 +157,10 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         nsample = self.conditional_sample(
             cond_data, 
             cond_mask,
-            cond=cond,
-            cond_null=cond_null,
-            other_cond=other_cond,
-            alpha=alpha,
-            beta=beta,
+            goal_cond= cond, 
+            other_goals_cond = other_conds, 
+            uncond = cond_null, 
+            alpha=-.25, beta=-.25,
             **self.kwargs)
         
         # unnormalize prediction

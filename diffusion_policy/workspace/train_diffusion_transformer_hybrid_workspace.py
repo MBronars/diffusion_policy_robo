@@ -19,10 +19,12 @@ import wandb
 import tqdm
 import numpy as np
 import shutil
+import torch.nn as nn
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.policy.diffusion_transformer_hybrid_image_policy import DiffusionTransformerHybridImagePolicy
 from diffusion_policy.dataset.base_dataset import BaseImageDataset
 from diffusion_policy.env_runner.base_image_runner import BaseImageRunner
+from diffusion_policy.env_runner.robomimic_image_runner import RobomimicImageRunner
 from diffusion_policy.common.checkpoint_util import TopKCheckpointManager
 from diffusion_policy.common.json_logger import JsonLogger
 from diffusion_policy.common.pytorch_util import dict_apply, optimizer_to
@@ -129,6 +131,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
 
         # device transfer
         device = torch.device(cfg.training.device)
+        self.model = nn.DataParallel(self.model)
         self.model.to(device)
         if self.ema_model is not None:
             self.ema_model.to(device)
@@ -162,7 +165,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             train_sampling_batch = batch
 
                         # compute loss
-                        raw_loss = self.model.compute_loss(batch)
+                        raw_loss = self.model.module.compute_loss(batch)
                         loss = raw_loss / cfg.training.gradient_accumulate_every
                         loss.backward()
 
@@ -174,7 +177,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                         
                         # update ema
                         if cfg.training.use_ema:
-                            ema.step(self.model)
+                            ema.step(self.model.module)
 
                         # logging
                         raw_loss_cpu = raw_loss.item()
@@ -204,13 +207,13 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 step_log['train_loss'] = train_loss
 
                 # ========= eval for this epoch ==========
-                policy = self.model
+                policy = self.model.module
                 if cfg.training.use_ema:
                     policy = self.ema_model
                 policy.eval()
 
                 # run rollout
-                if (self.epoch % cfg.training.rollout_every) == 0:
+                if (self.epoch % cfg.training.rollout_every) == 0 and (self.epoch != 0 or cfg.training.debug):
                     runner_log = env_runner.run(policy)
                     # log all
                     step_log.update(runner_log)
@@ -223,7 +226,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                                 leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
                             for batch_idx, batch in enumerate(tepoch):
                                 batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
-                                loss = self.model.compute_loss(batch)
+                                loss = self.model.module.compute_loss(batch)
                                 val_losses.append(loss)
                                 if (cfg.training.max_val_steps is not None) \
                                     and batch_idx >= (cfg.training.max_val_steps-1):
@@ -282,6 +285,22 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 json_logger.log(step_log)
                 self.global_step += 1
                 self.epoch += 1
+    
+    def eval(self, ckpt_path=None) -> dict:
+
+        cfg = copy.deepcopy(self.cfg)
+        #raise error if ckpt_path is None
+        if ckpt_path is None:
+            raise ValueError("ckpt_path must be provided")
+        self.load_checkpoint(path=ckpt_path)
+        # configure env
+        env_runner: RobomimicImageRunner
+        env_runner = hydra.utils.instantiate(
+            cfg.task.env_runner,
+            output_dir=self.output_dir)
+        assert isinstance(env_runner, RobomimicImageRunner)
+        log, traj = env_runner.run(self.model, save_rollout=True)
+        return traj
 
 @hydra.main(
     version_base=None,

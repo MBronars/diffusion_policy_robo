@@ -23,7 +23,12 @@ class TopKCheckpointManager:
         if self.k == 0:
             return None
 
-        value = data[self.monitor_key]
+        if self.monitor_key in data.keys():
+            value = data[self.monitor_key]
+        else:
+            value = 0.0
+            data[self.monitor_key] = value
+            
         ckpt_path = os.path.join(
             self.save_dir, self.format_str.format(**data))
         
