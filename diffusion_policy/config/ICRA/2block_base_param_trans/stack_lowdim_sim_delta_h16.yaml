@@ -150,7 +150,7 @@ task:
 task_name: stack_lowdim_long
 training:
   checkpoint_every: 50
-  debug: true
+  debug: false
   device: cuda
   gradient_accumulate_every: 1
   lr_scheduler: cosine

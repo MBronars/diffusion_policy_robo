@@ -69,7 +69,7 @@ policy:
     n_layer: 8
     n_obs_steps: 2
     obs_as_cond: true
-    output_dim: 7
+    output_dim: 10
     p_drop_attn: 0.3
     p_drop_emb: 0.0
     time_as_cond: true
@@ -150,7 +150,7 @@ task:
 task_name: stack_lowdim_long
 training:
   checkpoint_every: 50
-  debug: true
+  debug: false
   device: cuda
   gradient_accumulate_every: 1
   lr_scheduler: cosine
