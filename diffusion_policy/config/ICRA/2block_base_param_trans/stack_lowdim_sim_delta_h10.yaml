@@ -21,7 +21,7 @@ ema:
   min_value: 0.0
   power: 0.75
   update_after_step: 0
-eval_save: /home/MBronars/Documents/ICML_paper/datasets/alpha0_beta-0_gamma1.hdf5
+eval_save: /home/MBronars/Documents/ICML_paper/datasets/alpha1_beta-0_gamma1.hdf5
 exp_name: default
 horizon: 10
 keypoint_visible_rate: 1.0
@@ -112,7 +112,7 @@ task:
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
     abs_action: false
-    alpha: 0
+    alpha: 1
     beta: 0
     crf: 22
     dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
@@ -123,7 +123,7 @@ task:
     n_envs: 10
     n_latency_steps: 0
     n_obs_steps: 2
-    n_test: 40
+    n_test: 20
     n_test_vis: 4
     n_train: 0
     n_train_vis: 2
@@ -157,7 +157,7 @@ training:
   lr_warmup_steps: 1000
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 500
+  num_epochs: 300
   resume: true
   rollout_every: 50
   sample_every: 5

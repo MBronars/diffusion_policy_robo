@@ -33,7 +33,7 @@ from diffusion_policy.model.common.lr_scheduler import get_scheduler
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
-class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
+class TrainDiffusionTransformerRealWorkspace(BaseWorkspace):
     include_keys = ['global_step', 'epoch']
 
     def __init__(self, cfg: OmegaConf, output_dir=None):
