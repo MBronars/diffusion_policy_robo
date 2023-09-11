@@ -1,5 +1,5 @@
 _target_: diffusion_policy.workspace.train_diffusion_transformer_lowdim_workspace.TrainDiffusionTransformerLowdimWorkspace
-action_dim: 10
+action_dim: 7
 checkpoint:
   save_last_ckpt: true
   save_last_snapshot: false
@@ -54,7 +54,7 @@ optimizer:
 past_action_visible: false
 policy:
   _target_: diffusion_policy.policy.diffusion_transformer_lowdim_policy.DiffusionTransformerLowdimPolicy
-  action_dim: 10
+  action_dim: 7
   guidance_weight: 0.0
   horizon: 4
   model:
@@ -91,11 +91,11 @@ policy:
   pred_action_steps_only: false
 pred_action_steps_only: false
 task:
-  abs_action: true
-  action_dim: 10
+  abs_action: false
+  action_dim: 7
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
-    abs_action: true
+    abs_action: false
     dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
     horizon: 4
     obs_keys:
@@ -111,7 +111,7 @@ task:
   dataset_type: ph
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
-    abs_action: true
+    abs_action: false
     alpha: 0
     beta: 0
     crf: 22

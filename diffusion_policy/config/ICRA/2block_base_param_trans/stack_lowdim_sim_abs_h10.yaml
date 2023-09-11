@@ -62,7 +62,7 @@ policy:
     causal_attn: true
     cond_dim: 64
     horizon: 10
-    input_dim: 7
+    input_dim: 10
     n_cond_layers: 0
     n_emb: 256
     n_head: 4
