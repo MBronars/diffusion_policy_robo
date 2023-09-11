@@ -2,6 +2,7 @@ from typing import Dict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import random
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
@@ -24,6 +25,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             obs_as_global_cond=False,
             pred_action_steps_only=False,
             oa_step_convention=False,
+            p_uncond=0.25, 
             # parameters passed to step
             **kwargs):
         super().__init__()
@@ -49,20 +51,27 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         self.obs_as_global_cond = obs_as_global_cond
         self.pred_action_steps_only = pred_action_steps_only
         self.oa_step_convention = oa_step_convention
+        self.p_uncond = p_uncond
         self.kwargs = kwargs
 
         if num_inference_steps is None:
             num_inference_steps = noise_scheduler.config.num_train_timesteps
         self.num_inference_steps = num_inference_steps
-    
+
     # ========= inference  ============
     def conditional_sample(self, 
             condition_data, condition_mask,
-            local_cond=None, global_cond=None,
-            generator=None,
+            local_cond=None,
+            goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
+            alpha=-.25, beta=-.25,
             # keyword arguments to scheduler.step
             **kwargs
             ):
+        # goal cond = conditioned on all states and all target goal states
+        # other goals cond obs = conditioned on observer pov and other goals from observer pov
+        # goal cond obs = conditioned on observer pov and target goal from observer pov
+        # uncond = conditioned on all states only
+
         model = self.model
         scheduler = self.noise_scheduler
 
@@ -71,17 +80,22 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             dtype=condition_data.dtype,
             device=condition_data.device,
             generator=generator)
-    
+
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
+
 
         for t in scheduler.timesteps:
             # 1. apply conditioning
             trajectory[condition_mask] = condition_data[condition_mask]
 
             # 2. predict model output
-            model_output = model(trajectory, t, 
-                local_cond=local_cond, global_cond=global_cond)
+            conditional_output = model(trajectory, t, local_cond = local_cond, global_cond = goal_cond)
+            uncond_output = model(trajectory, t, local_cond = local_cond, global_cond = uncond)
+            other_goals_conditional_output = [model(trajectory, t, local_cond = local_cond, global_cond = other_goal_cond) for other_goal_cond in other_goals_cond]
+            conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
+
+            model_output = (1- alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -96,7 +110,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals: torch.Tensor = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -126,9 +140,17 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             shape = (B, T, Da)
             cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
+        # we are going to use obs as global cond for legibiltiy diffuser
         elif self.obs_as_global_cond:
             # condition throught global feature
             global_cond = nobs[:,:To].reshape(nobs.shape[0], -1)
+            goal = goal.reshape(goal.shape[0], -1)
+            other_goals = [other_goal.reshape(other_goal.shape[0], -1) for other_goal in other_goals]
+            null_goal = torch.zeros_like(goal)
+            global_cond_null = torch.cat([global_cond, null_goal], dim=-1)
+            global_other_conds = [torch.cat([global_cond, other_goal], dim=-1) for other_goal in other_goals]
+            global_cond = torch.cat([global_cond, goal], dim=-1)
+
             shape = (B, T, Da)
             if self.pred_action_steps_only:
                 shape = (B, self.n_action_steps, Da)
@@ -147,7 +169,11 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             cond_data, 
             cond_mask,
             local_cond=local_cond,
-            global_cond=global_cond,
+            goal_cond=global_cond,
+            other_goals_cond=global_other_conds,
+            uncond=global_cond_null,
+            alpha = alpha,
+            beta = beta,
             **self.kwargs)
         
         # unnormalize prediction
@@ -186,6 +212,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         nbatch = self.normalizer.normalize(batch)
         obs = nbatch['obs']
         action = nbatch['action']
+        goal = nbatch['goal']
 
         # handle different ways of passing observation
         local_cond = None
@@ -195,9 +222,17 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             # zero out observations after n_obs_steps
             local_cond = obs
             local_cond[:,self.n_obs_steps:,:] = 0
+        # we are going to use obs as global cond for legibiltiy diffuser
         elif self.obs_as_global_cond:
             global_cond = obs[:,:self.n_obs_steps,:].reshape(
                 obs.shape[0], -1)
+            goal = goal[:, :self.n_obs_steps,:].reshape(goal.shape[0], -1)
+            null_goal = torch.zeros_like(goal)
+
+            if random.random() > self.p_uncond:
+                global_cond = torch.cat([global_cond, null_goal], dim=-1)
+            else:
+                global_cond = torch.cat([global_cond, goal], dim=-1)
             if self.pred_action_steps_only:
                 To = self.n_obs_steps
                 start = To

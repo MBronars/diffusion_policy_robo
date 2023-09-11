@@ -96,6 +96,9 @@ class RobomimicLowdimWrapper(gym.Env):
     
     def check_success(self):
         return self.env.is_success()
+    
+    def set_goal(self, goal):
+        self.env.set_goal(goal)
 
 
 def test():

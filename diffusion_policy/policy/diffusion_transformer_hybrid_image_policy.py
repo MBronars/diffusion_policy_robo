@@ -216,7 +216,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             conditional_output = model(trajectory, t, goal_cond)
             uncond_output = model(trajectory, t, uncond)
             other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
-            conditional_other = sum(other_goals_conditional_output)
+            conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
 
             model_output = (1 - alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
 

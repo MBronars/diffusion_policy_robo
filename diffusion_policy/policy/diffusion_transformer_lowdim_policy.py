@@ -91,7 +91,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             conditional_output = model(trajectory, t, goal_cond)
             uncond_output = model(trajectory, t, uncond)
             other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
-            conditional_other = sum(other_goals_conditional_output)
+            conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
 
             model_output = (1- alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
 
@@ -160,7 +160,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             goal_cond= cond, 
             other_goals_cond = other_conds, 
             uncond = cond_null, 
-            alpha=-.25, beta=-.25,
+            alpha=alpha, beta=beta,
             **self.kwargs)
         
         # unnormalize prediction
@@ -264,4 +264,5 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         loss = loss * loss_mask.type(loss.dtype)
         loss = reduce(loss, 'b ... -> b (...)', 'mean')
         loss = loss.mean()
+        
         return loss

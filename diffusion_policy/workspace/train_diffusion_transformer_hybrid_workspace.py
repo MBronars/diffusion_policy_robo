@@ -131,7 +131,6 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
 
         # device transfer
         device = torch.device(cfg.training.device)
-        self.model = nn.DataParallel(self.model)
         self.model.to(device)
         if self.ema_model is not None:
             self.ema_model.to(device)
@@ -165,7 +164,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             train_sampling_batch = batch
 
                         # compute loss
-                        raw_loss = self.model.module.compute_loss(batch)
+                        raw_loss = self.model.compute_loss(batch)
                         loss = raw_loss / cfg.training.gradient_accumulate_every
                         loss.backward()
 
@@ -177,7 +176,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                         
                         # update ema
                         if cfg.training.use_ema:
-                            ema.step(self.model.module)
+                            ema.step(self.model)
 
                         # logging
                         raw_loss_cpu = raw_loss.item()
@@ -207,7 +206,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 step_log['train_loss'] = train_loss
 
                 # ========= eval for this epoch ==========
-                policy = self.model.module
+                policy = self.model
                 if cfg.training.use_ema:
                     policy = self.ema_model
                 policy.eval()
@@ -226,7 +225,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                                 leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
                             for batch_idx, batch in enumerate(tepoch):
                                 batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
-                                loss = self.model.module.compute_loss(batch)
+                                loss = self.model.compute_loss(batch)
                                 val_losses.append(loss)
                                 if (cfg.training.max_val_steps is not None) \
                                     and batch_idx >= (cfg.training.max_val_steps-1):

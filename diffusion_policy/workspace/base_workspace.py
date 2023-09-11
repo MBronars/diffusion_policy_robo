@@ -80,6 +80,9 @@ class BaseWorkspace:
             include_keys = payload['pickles'].keys()
 
         for key, value in payload['state_dicts'].items():
+            if "module." in key:
+                key = key.replace("module.", "")
+            value = {k.replace("module.", ""): v for k, v in value.items()}
             if key not in exclude_keys:
                 self.__dict__[key].load_state_dict(value, **kwargs)
         for key in include_keys:

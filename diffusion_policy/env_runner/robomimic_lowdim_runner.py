@@ -312,8 +312,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Lowdim {chunk_idx+1}/{n_chunks}", 
                 leave=False, mininterval=self.tqdm_interval_sec)
             
-            goal = goal_chunks[chunk_idx % len(goal_chunks)][this_local_slice]
-            other_goals = [other_goal[this_local_slice] for i, other_goal in enumerate(goal_chunks) if i != chunk_idx % len(goal_chunks)]
+            goal_index = chunk_idx % len(goal_chunks)
+            goal = goal_chunks[goal_index][this_local_slice]
+            env._set_goal(goal_index)
+            other_goals = [other_goal[this_local_slice] for i, other_goal in enumerate(goal_chunks) if i != goal_index]
 
             done = False
             while not done:

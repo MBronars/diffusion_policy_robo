@@ -33,7 +33,7 @@ def main(cfg: OmegaConf):
 
     for i in range(1):
 
-        trajs = workspace.eval(ckpt_path="/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.09.07/23.43.23_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0350-test_mean_score=1.000.ckpt")
+        trajs = workspace.eval("/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.09.10/03.16.19_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0100-test_mean_score=1.000.ckpt")
 
         # trajs = workspace.eval(ckpt_path="/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.07.24/16.43.41_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0150-test_mean_score=1.000.ckpt")
         # trajs = workspace.eval(ckpt_path="/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/2023.08.27/02.10.44_train_diffusion_transformer_lowdim_long_pickplace_lowdim/checkpoints/epoch=0400-test_mean_score=0.240.ckpt")
@@ -59,6 +59,7 @@ def main(cfg: OmegaConf):
     # data_grp.attrs["env_args"] = json.dumps(env.serialize(), indent=4) # environment info
     data_writer.close()
     print("Wrote dataset trajectories to {}".format(cfg.eval_save))
+
 
 
 

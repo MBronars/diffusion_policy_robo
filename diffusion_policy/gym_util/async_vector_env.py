@@ -559,6 +559,9 @@ class AsyncVectorEnv(VectorEnv):
 
     def _check_success(self):
         return self.call('check_success')
+    
+    def _set_goal(self, goal):
+        return self.call('set_goal', goal)
 
 
 
