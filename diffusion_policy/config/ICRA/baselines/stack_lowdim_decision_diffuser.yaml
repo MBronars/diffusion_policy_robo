@@ -10,7 +10,7 @@ checkpoint:
     monitor_key: test_mean_score
 dataloader:
   batch_size: 512
-  num_workers: 4
+  num_workers: 2
   persistent_workers: false
   pin_memory: true
   shuffle: true
@@ -21,7 +21,7 @@ ema:
   min_value: 0.0
   power: 0.75
   update_after_step: 0
-eval_save: /home/MBronars/Documents/ICML_paper/datasets/alpha1_beta-0_gamma1.hdf5
+eval_save: /home/MBronars/Documents/ICML_paper/datasets/decision_diffuser.hdf5
 exp_name: default
 horizon: 16
 keypoint_visible_rate: 1.0
@@ -29,7 +29,7 @@ logging:
   group: null
   id: null
   mode: online
-  name: 2022.12.29-21.58.57_train_diffusion_transformer_lowdim_stack_lowdim_long_abs_h16
+  name: 2022.12.29-21.58.57_train_diffusion_transformer_lowdim_stack_lowdim_long
   project: diffusion_policy_debug
   resume: true
   tags:
@@ -37,14 +37,14 @@ logging:
   - stack_lowdim
   - bronars
 multi_run:
-  run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/hyperparam_scan/2block_base_params
-  wandb_name_base: 2022.12.29-21.58.57_train_diffusion_transformer_lowdim_stack_lowdim_long_abs_h16
-n_action_steps: 8
+  run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/training_runs/2block/benchmarks
+  wandb_name_base: 2022.12.29-21.58.57_train_diffusion_transformer_lowdim_stack_lowdim_long
+n_action_steps: 16
 n_latency_steps: 0
-n_obs_steps: 2
+n_obs_steps: 16
 name: train_diffusion_transformer_lowdim_long
-obs_as_cond: true
-obs_dim: 32
+obs_as_cond: false
+obs_dim: 64
 optimizer:
   betas:
   - 0.9
@@ -60,21 +60,21 @@ policy:
   model:
     _target_: diffusion_policy.model.diffusion.transformer_for_diffusion.TransformerForDiffusion
     causal_attn: true
-    cond_dim: 64
+    cond_dim: 0
     horizon: 16
-    input_dim: 10
+    input_dim: 74
     n_cond_layers: 0
     n_emb: 256
     n_head: 4
     n_layer: 8
-    n_obs_steps: 2
-    obs_as_cond: true
-    output_dim: 10
+    n_obs_steps: 16
+    obs_as_cond: false
+    output_dim: 74
     p_drop_attn: 0.3
     p_drop_emb: 0.0
     time_as_cond: true
-  n_action_steps: 8
-  n_obs_steps: 2
+  n_action_steps: 16
+  n_obs_steps: 16
   noise_scheduler:
     _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
     beta_end: 0.02
@@ -85,8 +85,8 @@ policy:
     prediction_type: epsilon
     variance_type: fixed_small
   num_inference_steps: 100
-  obs_as_cond: true
-  obs_dim: 32
+  obs_as_cond: false
+  obs_dim: 64
   p_uncond: 0.25
   pred_action_steps_only: false
 pred_action_steps_only: false
@@ -96,7 +96,7 @@ task:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
     abs_action: true
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image_abs.hdf5
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
     horizon: 16
     obs_keys:
     - object
@@ -107,23 +107,23 @@ task:
     pad_before: 1
     seed: 42
     val_ratio: 0.02
-  dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image_abs.hdf5
+  dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
   dataset_type: ph
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
     abs_action: true
-    alpha: 1
+    alpha: -.5
     beta: 0
     crf: 22
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image_abs.hdf5
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
     fps: 10
     gamma: 1
     max_steps: 400
-    n_action_steps: 8
+    n_action_steps: 16
     n_envs: 10
     n_latency_steps: 0
-    n_obs_steps: 2
-    n_test: 20
+    n_obs_steps: 16
+    n_test: 40
     n_test_vis: 4
     n_train: 0
     n_train_vis: 2
@@ -140,7 +140,7 @@ task:
     train_start_idx: 0
   keypoint_dim: 3
   name: stack_lowdim
-  obs_dim: 32
+  obs_dim: 64
   obs_keys:
   - object
   - robot0_eef_pos
@@ -167,7 +167,7 @@ training:
   val_every: 1
 val_dataloader:
   batch_size: 512
-  num_workers: 4
+  num_workers: 2
   persistent_workers: false
   pin_memory: true
   shuffle: false
