@@ -43,7 +43,7 @@ def main_wrapper(ckpt:str, config_name:str, rel_config_path:str):
 
         save_path = save_path + cfg.logging.name + "-" + ckpt_name + ".hdf5"
 
-        data_writer = h5py.File(cfg.eval_save, "w")
+        data_writer = h5py.File(save_path, "w")
         data_grp = data_writer.create_group("data")
         total_samples = 0
 
@@ -293,5 +293,5 @@ if __name__ == "__main__":
                     rel_config_path = os.path.relpath(os.path.dirname(config_file), config_dir)
                     rel_config_path = os.path.join(relative_path, rel_config_path)
                     config_name = os.path.basename(config_file)
-
+                    
                     main_wrapper(ckpt=top_checkpoints[i][0], config_name=config_name, rel_config_path=rel_config_path)

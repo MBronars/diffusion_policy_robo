@@ -88,6 +88,7 @@ class TrainBETLowdimWorkspace(BaseWorkspace):
             normalizer = LinearNormalizer()
             normalizer['action'] = SingleFieldLinearNormalizer.create_identity()
             normalizer['obs'] = SingleFieldLinearNormalizer.create_identity()
+            normalizer['goal'] = SingleFieldLinearNormalizer.create_identity()
 
         self.policy.set_normalizer(normalizer)
 
@@ -200,7 +201,7 @@ class TrainBETLowdimWorkspace(BaseWorkspace):
                 self.policy.eval()
 
                 # run rollout
-                if (self.epoch % cfg.training.rollout_every) == 0:
+                if (self.epoch % cfg.training.rollout_every) == 0 and (self.epoch != 0 or cfg.training.debug):
                     runner_log = env_runner.run(self.policy)
                     # log all
                     step_log.update(runner_log)
@@ -223,32 +224,32 @@ class TrainBETLowdimWorkspace(BaseWorkspace):
                             # log epoch average validation loss
                             step_log['val_loss'] = val_loss
 
-                # run sample on a training batch
-                if (self.epoch % cfg.training.sample_every) == 0:
-                    with torch.no_grad():
-                        # sample trajectory from training set, and evaluate difference
-                        batch = train_sampling_batch
-                        obs_dict = {'obs': batch['obs']}
-                        gt_action = batch['action']
+                # # run sample on a training batch
+                # if (self.epoch % cfg.training.sample_every) == 0:
+                #     with torch.no_grad():
+                #         # sample trajectory from training set, and evaluate difference
+                #         batch = train_sampling_batch
+                #         obs_dict = {'obs': batch['obs']}
+                #         gt_action = batch['action']
                         
-                        result = self.policy.predict_action(obs_dict)
-                        if cfg.pred_action_steps_only:
-                            pred_action = result['action']
-                            start = cfg.n_obs_steps - 1
-                            end = start + cfg.n_action_steps
-                            gt_action = gt_action[:,start:end]
-                        else:
-                            pred_action = result['action_pred']
-                        mse = torch.nn.functional.mse_loss(pred_action, gt_action)
-                        # log
-                        step_log['train_action_mse_error'] = mse.item()
-                        # release RAM
-                        del batch
-                        del obs_dict
-                        del gt_action
-                        del result
-                        del pred_action
-                        del mse
+                #         result = self.policy.predict_action(obs_dict)
+                #         if cfg.pred_action_steps_only:
+                #             pred_action = result['action']
+                #             start = cfg.n_obs_steps - 1
+                #             end = start + cfg.n_action_steps
+                #             gt_action = gt_action[:,start:end]
+                #         else:
+                #             pred_action = result['action_pred']
+                #         mse = torch.nn.functional.mse_loss(pred_action, gt_action)
+                #         # log
+                #         step_log['train_action_mse_error'] = mse.item()
+                #         # release RAM
+                #         del batch
+                #         del obs_dict
+                #         del gt_action
+                #         del result
+                #         del pred_action
+                #         del mse
 
                 # checkpoint
                 if (self.epoch % cfg.training.checkpoint_every) == 0:

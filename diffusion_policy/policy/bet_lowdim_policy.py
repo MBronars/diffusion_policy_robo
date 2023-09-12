@@ -29,7 +29,7 @@ class BETLowdimPolicy(BaseLowdimPolicy):
         self.n_obs_steps = n_obs_steps
 
     # ========= inference  ============
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals = None, alpha = None, beta = None) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -44,12 +44,16 @@ class BETLowdimPolicy(BaseLowdimPolicy):
         # pad To to T
         obs = torch.full((B,T,Do), -2, dtype=nobs.dtype, device=nobs.device)
         obs[:,:To,:] = nobs[:,:To,:]
+        fin_goal = obs[:]
+        fin_goal[:,:To,:] = goal[:,:To,:]
+
+        cond = torch.cat([obs, fin_goal], dim=-1)
 
         # (B,T,Do)
-        enc_obs = self.obs_encoding_net(obs)
+        enc_cond = self.obs_encoding_net(cond)
 
         # Sample latents from the prior
-        latents, offsets = self.state_prior.generate_latents(enc_obs)
+        latents, offsets = self.state_prior.generate_latents(enc_cond)
 
         # un-descritize
         naction_pred = self.action_ae.decode_actions(
@@ -112,15 +116,19 @@ class BETLowdimPolicy(BaseLowdimPolicy):
         nbatch = self.normalizer.normalize(batch)
         obs = nbatch['obs']
         action = nbatch['action']
+        goal = nbatch['goal']
 
         # mask out observations after n_obs_steps
         To = self.n_obs_steps
         obs[:,To:,:] = -2 # (normal obs range [-1,1])
+        goal[:,To:,:] = -2 # (normal obs range [-1,1])
 
-        enc_obs = self.obs_encoding_net(obs)
-        latent = self.action_ae.encode_into_latent(action, enc_obs)
+        enc_cond = torch.cat([obs, goal], dim=-1)
+        enc_cond = self.obs_encoding_net(enc_cond)
+
+        latent = self.action_ae.encode_into_latent(action, enc_cond)
         _, loss, loss_components = self.state_prior.get_latent_and_loss(
-            obs_rep=enc_obs,
+            obs_rep=enc_cond,
             target_latents=latent,
             return_loss_components=True,
         )
