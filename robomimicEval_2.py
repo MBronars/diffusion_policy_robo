@@ -33,11 +33,9 @@ def main(cfg: OmegaConf):
 
     for i in range(1):
 
-        #trajs = workspace.eval("/srv/rl2-lab/flash8/mbronars3/ICRA/results/final_outputs/run/23.40.59_train_diffusion_unet_lowdim_lift_lowdim/checkpoints/epoch=0050-test_mean_score=1.000.ckpt")
-        #trajs = workspace.eval("/srv/rl2-lab/flash8/mbronars3/ICRA/results/eval_ckpts/04.06.02_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0850-test_mean_score=1.000.ckpt")
-        #trajs = workspace.eval("/srv/rl2-lab/flash8/mbronars3/legibility/training_runs/23.17.40_train_diffusion_unet_lowdim_lift_lowdim/checkpoints/epoch=0150-test_mean_score=0.750.ckpt")
-        trajs = workspace.eval("/srv/rl2-lab/flash8/mbronars3/legibility/training_runs/14.41.28_train_diffusion_unet_lowdim_lift_lowdim/checkpoints/epoch=0100-test_mean_score=1.000-val_loss=0.005.ckpt")
-        # trajs = workspace.eval("/srv/rl2-lab/flash8/mbronars3/legibility/training_runs/17.40.26_train_diffusion_unet_lowdim_lift_lowdim/checkpoints/epoch=0125-test_mean_score=0.833-val_loss=0.005.ckpt")
+        #trajs = workspace.eval("/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablations/20.03.36_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0700-test_mean_score=1.000.ckpt")
+        trajs = workspace.eval("/srv/rl2-lab/flash8/mbronars3/ICRA/results/eval_ckpts/20.16.16_train_diffusion_transformer_lowdim_long_stack_lowdim_long/checkpoints/epoch=0200-test_mean_score=1.000.ckpt")
+
         for i in range(len(trajs)):
 
             ep_data_grp = data_grp.create_group("demo_{}".format(i))

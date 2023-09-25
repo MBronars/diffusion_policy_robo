@@ -123,7 +123,7 @@ task:
     n_latency_steps: 0
     n_obs_steps: 2
     n_test: 20
-    alpha: 1
+    alpha: 0
     beta: 0
     gamma: 1
     n_test_vis: 3

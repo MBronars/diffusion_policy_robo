@@ -9,7 +9,7 @@ checkpoint:
     mode: max
     monitor_key: test_mean_score
 dataloader:
-  batch_size: 512
+  batch_size: 400
   num_workers: 1
   persistent_workers: false
   pin_memory: true
@@ -36,7 +36,7 @@ n_action_steps: 1
 n_latency_steps: 0
 n_obs_steps: 2
 name: train_ibc_dfo_lowdim
-obs_dim: 64
+obs_dim: 32
 optimizer:
   _target_: torch.optim.AdamW
   betas:
@@ -55,7 +55,7 @@ policy:
   kevin_inference: false
   n_action_steps: 1
   n_obs_steps: 2
-  obs_dim: 64
+  obs_dim: 32
   pred_n_iter: 5
   pred_n_samples: 1024
   train_n_neg: 1024
@@ -65,7 +65,7 @@ task:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
     abs_action: false
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
     horizon: 2
     obs_keys:
     - object
@@ -77,13 +77,13 @@ task:
     seed: 42
     use_legacy_normalizer: false
     val_ratio: 0.02
-  dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
+  dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
   dataset_type: mh
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
     abs_action: false
     crf: 22
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 1
@@ -108,7 +108,7 @@ task:
     train_start_idx: 0
   keypoint_dim: 3
   name: lift_lowdim
-  obs_dim: 64
+  obs_dim: 32
   obs_keys:
   - object
   - robot0_eef_pos
@@ -134,7 +134,7 @@ training:
   tqdm_interval_sec: 1.0
   val_every: 1
 val_dataloader:
-  batch_size: 512
+  batch_size: 400
   num_workers: 1
   persistent_workers: false
   pin_memory: true

@@ -214,7 +214,7 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                 policy.eval()
 
                 # run rollout
-                if (self.epoch % cfg.training.rollout_every) == 0 and (self.epoch != 0 or cfg.training.debug):
+                if (self.epoch % cfg.training.rollout_every) == 0: # and (self.epoch != 0 or cfg.training.debug):
                     runner_log = env_runner.run(policy)
                     # log all
                     step_log.update(runner_log)
@@ -308,6 +308,8 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
             cfg.task.env_runner,
             output_dir=self.output_dir)
         assert isinstance(env_runner, RobomimicLowdimRunner)
+        device = torch.device(cfg.training.device)
+        self.model.to(device)
         log, traj = env_runner.run(self.model, save_rollout=True)
         return traj
 

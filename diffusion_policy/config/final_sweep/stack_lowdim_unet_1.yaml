@@ -1,16 +1,16 @@
-_target_: diffusion_policy.workspace.train_diffusion_transformer_lowdim_workspace.TrainDiffusionTransformerLowdimWorkspace
-action_dim: 10
+_target_: diffusion_policy.workspace.train_diffusion_unet_lowdim_workspace.TrainDiffusionUnetLowdimWorkspace
+action_dim: 7
 checkpoint:
   save_last_ckpt: true
   save_last_snapshot: false
   topk:
-    format_str: epoch={epoch:04d}-test_mean_score={test_mean_score:.3f}.ckpt
+    format_str: epoch={epoch:04d}-test_mean_score={test_mean_score:.3f}-val_loss={val_loss:.3f}.ckpt
     k: 5
     mode: max
-    monitor_key: test_mean_score
+    monitor_key: val_loss
 dataloader:
-  batch_size: 512
-  num_workers: 2
+  batch_size: 256
+  num_workers: 4
   persistent_workers: false
   pin_memory: true
   shuffle: true
@@ -21,60 +21,60 @@ ema:
   min_value: 0.0
   power: 0.75
   update_after_step: 0
-eval_save: /home/MBronars/Documents/ICML_paper/datasets/decision_diffuser.hdf5
-exp_name: 
+eval_save: /srv/rl2-lab/flash8/mbronars3/legibility/full_training_scan/unet_delta_default_sweep/alpha.1_beta2_gamma.95.hdf5
+exp_name: obs_global_rerun
 horizon: 16
+keypoint_dim: 3
 keypoint_visible_rate: 1.0
 logging:
   group: null
   id: null
   mode: online
-  name: 2022.12.29-21.58.57_decision_diffuser
+  name: 2023.02.23-19.52.40_train_diffusion_unet_lowdim_lift_lowdim_abs_h16
   project: diffusion_policy_debug
   resume: true
   tags:
-  - train_diffusion_transformer_lowdim
-  - stack_lowdim
-  - bronars
+  - train_diffusion_unet_lowdim
+  - lift_lowdim
+  - obs_global_rerun
 multi_run:
-  run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/training_runs/2block/benchmarks
-  wandb_name_base: 2022.12.29-21.58.57_decision_diffuser
-n_action_steps: 4
+  run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/hyperparam_scan/2block_base_params
+  wandb_name_base: 2023.02.23-19.52.40_train_diffusion_unet_lowdim_lift_lowdim_abs_h16
+n_action_steps: 8
 n_latency_steps: 0
-n_obs_steps: 16
-name: decision_diffuser
-obs_as_cond: false
-obs_dim: 64
+n_obs_steps: 2
+name: train_diffusion_unet_lowdim
+obs_as_global_cond: true
+obs_as_local_cond: false
+obs_dim: 32
 optimizer:
+  _target_: torch.optim.AdamW
   betas:
-  - 0.9
   - 0.95
-  learning_rate: 0.0001
-  weight_decay: 0.001
+  - 0.999
+  eps: 1.0e-08
+  lr: 1.0e-05
+  weight_decay: 1.0e-05
 past_action_visible: false
 policy:
-  _target_: diffusion_policy.policy.diffusion_transformer_lowdim_policy.DiffusionTransformerLowdimPolicy
-  action_dim: 10
-  guidance_weight: 0.0
+  _target_: diffusion_policy.policy.diffusion_unet_lowdim_policy.DiffusionUnetLowdimPolicy
+  action_dim: 7
   horizon: 16
   model:
-    _target_: diffusion_policy.model.diffusion.transformer_for_diffusion.TransformerForDiffusion
-    causal_attn: true
-    cond_dim: 0
-    horizon: 16
-    input_dim: 74
-    n_cond_layers: 0
-    n_emb: 256
-    n_head: 4
-    n_layer: 8
-    n_obs_steps: 16
-    obs_as_cond: false
-    output_dim: 74
-    p_drop_attn: 0.3
-    p_drop_emb: 0.0
-    time_as_cond: true
-  n_action_steps: 4
-  n_obs_steps: 16
+    _target_: diffusion_policy.model.diffusion.conditional_unet1d.ConditionalUnet1D
+    cond_predict_scale: true
+    diffusion_step_embed_dim: 256
+    down_dims:
+    - 256
+    - 512
+    - 1024
+    global_cond_dim: 128
+    input_dim: 7
+    kernel_size: 5
+    local_cond_dim: null
+    n_groups: 8
+  n_action_steps: 8
+  n_obs_steps: 2
   noise_scheduler:
     _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
     beta_end: 0.02
@@ -85,17 +85,18 @@ policy:
     prediction_type: epsilon
     variance_type: fixed_small
   num_inference_steps: 100
-  obs_as_cond: false
-  obs_dim: 64
-  p_uncond: 0.25
+  oa_step_convention: true
+  obs_as_global_cond: true
+  obs_as_local_cond: false
+  obs_dim: 32
   pred_action_steps_only: false
 pred_action_steps_only: false
 task:
-  abs_action: true
-  action_dim: 10
+  abs_action: false
+  action_dim: 7
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
-    abs_action: true
+    abs_action: false
     dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
     horizon: 16
     obs_keys:
@@ -105,26 +106,28 @@ task:
     - robot0_gripper_qpos
     pad_after: 7
     pad_before: 1
+    rotation_rep: rotation_6d
     seed: 42
-    val_ratio: 0.02
+    use_legacy_normalizer: false
+    val_ratio: 0.1
   dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
-  dataset_type: ph
+  dataset_type: mh
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
-    abs_action: true
-    alpha: -.5
-    beta: 0
+    abs_action: false
+    alpha: '.1'
+    beta: '2'
     crf: 22
     dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
     fps: 10
-    gamma: 1
+    gamma: '.95'
     max_steps: 400
-    n_action_steps: 4
-    n_envs: 10
+    n_action_steps: 8
+    n_envs: 15
     n_latency_steps: 0
-    n_obs_steps: 16
-    n_test: 40
-    n_test_vis: 4
+    n_obs_steps: 2
+    n_test: 30
+    n_test_vis: 3
     n_train: 0
     n_train_vis: 2
     obs_keys:
@@ -136,28 +139,29 @@ task:
     render_hw:
     - 128
     - 128
-    test_start_seed: 100000
+    test_start_seed: 11000
+    tqdm_interval_sec: 1.0
     train_start_idx: 0
   keypoint_dim: 3
-  name: decision_diffuser
-  obs_dim: 64
+  name: lift_lowdim
+  obs_dim: 32
   obs_keys:
   - object
   - robot0_eef_pos
   - robot0_eef_quat
   - robot0_gripper_qpos
-  task_name: 2block
-task_name: 2block
+  task_name: lift
+task_name: lift_lowdim
 training:
   checkpoint_every: 50
   debug: false
-  device: cuda
+  device: cuda:0
   gradient_accumulate_every: 1
   lr_scheduler: cosine
-  lr_warmup_steps: 1000
+  lr_warmup_steps: 500
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 2000
+  num_epochs: 300
   resume: true
   rollout_every: 50
   sample_every: 5
@@ -166,8 +170,8 @@ training:
   use_ema: true
   val_every: 1
 val_dataloader:
-  batch_size: 512
-  num_workers: 2
+  batch_size: 256
+  num_workers: 4
   persistent_workers: false
   pin_memory: true
   shuffle: false

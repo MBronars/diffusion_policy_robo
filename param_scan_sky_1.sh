@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Define parameter ranges
-alpha_values=("-1" "-.5" "-.25" "0" ".25" )
-beta_values=("-.2" "0" ".25" )
-gamma_values=("1" "0.99" "95")
+alpha_values=("-.2" "-.1" "0" ".1" ".2")
+beta_values=("2")
+gamma_values=(".99" ".95" ".85" ".75" )
 
-output_file="/home/MBronars/workspace/ICRA/results/hyperparam_scan/output.txt"
+output_file="/srv/rl2-lab/flash8/mbronars3/legibility/full_training_scan/unet_delta_default_sweep/unet_output_1.txt"
 num_samples=40  # Number of random samples
 
 # Clear or create the output file
@@ -38,15 +38,15 @@ for ((i=0; i<num_samples; i++)); do
   gamma=$(echo "$random_combination" | awk '{print $3}')
 
   # Change the yaml file to use the current random parameter combination
-  python /home/MBronars/workspace/ICRA/scripts/yaml_update.py $alpha $beta $gamma
+  python /srv/rl2-lab/flash8/mbronars3/ICRA/scripts/update_yaml_1.py $alpha $beta $gamma
 
   # Run your program with the current random parameter combination and capture the output
-  python robomimicEval.py --config-dir /home/MBronars/workspace/diffusion_policy_robo/diffusion_policy/config/task --config-name stack_lowdim_sim.yaml  hydra.run.dir='/home/MBronars/Documents/ICML_paper/diffuser/data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}'
+  python robomimicEval.py --config-dir /srv/rl2-lab/flash8/mbronars3/workspace/diffusion_policy_robo/diffusion_policy/config/final_sweep --config-name stack_lowdim_unet_1.yaml  hydra.run.dir='/srv/rl2-lab/flash8/mbronars3/legibility/runs/${now:%H.%M.%S}_${name}_${task_name}'
   
-  eval_save_path="/home/MBronars/Documents/ICML_paper/datasets/alpha${alpha}_beta${beta}_gamma${gamma}.hdf5"
+  eval_save_path="/srv/rl2-lab/flash8/mbronars3/legibility/full_training_scan/unet_delta_default_sweep/alpha${alpha}_beta${beta}_gamma${gamma}.hdf5"
 
   # Pipe the program output to the evaluation program
-  evaluation_result=$(python /home/MBronars/workspace/ICRA/scripts/evaluate_legibility.py $eval_save_path)
+  evaluation_result=$(python /srv/rl2-lab/flash8/mbronars3/ICRA/scripts/evaluate_legibility.py $eval_save_path 8)
 
   # Store the evaluation result along with the parameters in the output file
   echo "Parameter 1: $alpha" >> "$output_file"

@@ -60,7 +60,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
     
     # ========= inference  ============
     def conditional_sample(self, 
-            condition_data, condition_mask,null_cond_data = None,
+            condition_data, condition_mask, null_cond_data = None,
             goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
             alpha=-.25, beta=-.25,
             # keyword arguments to scheduler.step
@@ -83,7 +83,8 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
 
-
+        # print("alpha: ", alpha)
+        # print("beta: ", beta)
         for t in scheduler.timesteps:
             # 1. apply conditioning
             if null_cond_data is not None:
@@ -104,7 +105,9 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
                 other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
                 conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
 
-                model_output = (1- alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
+                model_output = (1 - alpha + beta) * conditional_output + alpha * uncond_output - beta * conditional_other
+
+                # model_output = model(trajectory, t, goal_cond)
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -128,7 +131,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         return goal_cond
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals: torch.Tensor = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals: List[torch.Tensor] = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -162,6 +165,7 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         if self.obs_as_cond:
             cond = nobs[:,:To]
             goal = goal[:,:To]
+
             other_goals = [other_goal[:,:To] for other_goal in other_goals]
             null_goal = torch.zeros_like(goal)
             cond_null = torch.cat([cond, null_goal], dim=-1)

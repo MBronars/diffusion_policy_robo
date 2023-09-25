@@ -49,6 +49,8 @@ class BETLowdimPolicy(BaseLowdimPolicy):
 
         cond = torch.cat([obs, fin_goal], dim=-1)
 
+        cond = obs
+
         # (B,T,Do)
         enc_cond = self.obs_encoding_net(cond)
 
@@ -124,6 +126,9 @@ class BETLowdimPolicy(BaseLowdimPolicy):
         goal[:,To:,:] = -2 # (normal obs range [-1,1])
 
         enc_cond = torch.cat([obs, goal], dim=-1)
+
+        enc_cond = obs
+
         enc_cond = self.obs_encoding_net(enc_cond)
 
         latent = self.action_ae.encode_into_latent(action, enc_cond)

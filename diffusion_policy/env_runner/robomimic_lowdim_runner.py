@@ -281,6 +281,8 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
 
         trajs = []
 
+        dataset_counter = 0
+
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
             end = min(n_inits, start + n_envs)
@@ -298,6 +300,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             env.call_each('run_dill_function', 
                 args_list=[(x,) for x in this_init_fns])
 
+            
+            
+
             # start rollout
             obs = env.reset()
             past_action = None
@@ -312,12 +317,24 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Lowdim {chunk_idx+1}/{n_chunks}", 
                 leave=False, mininterval=self.tqdm_interval_sec)
             
+            goals = self.get_goal(policy)
+            goal_chunks = [goal.repeat(n_envs, self.n_obs_steps, 1) for goal in goals]
             goal_index = chunk_idx % len(goal_chunks)
-            goal = goal_chunks[goal_index][this_local_slice]
+
             env._set_goal(goal_index)
+
+
+            # if goal_index == len(goal_chunks) - 1:
+            #     dataset_counter += 1
+            
+            
+
+            goal = goal_chunks[goal_index][this_local_slice]
+            
             other_goals = [other_goal[this_local_slice] for i, other_goal in enumerate(goal_chunks) if i != goal_index]
 
             done = False
+            beta_step = 0
             while not done:
                 # create obs dict
                 np_obs_dict = {
@@ -337,7 +354,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict, goal, other_goals, alpha=alpha, beta=beta)
+                    action_dict = policy.predict_action(obs_dict, goal = goal, other_goals = other_goals, alpha=alpha, beta=beta)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -354,7 +371,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 env_action = action
                 if self.abs_action:
                     env_action = self.undo_transform_action(action)
-
+                
                 next_obs, reward, done, info = env.step(env_action)
                 finished = env._check_success()
                 finished = [f['task'] for f in finished]
@@ -373,15 +390,20 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 past_action = action
 
                 done = done or finished
-
-
+                
+                # if beta_step == 0:
+                #     beta = float(self.beta)
+                # else:
+                beta = beta * gamma
+                
+                beta_step += 1
 
                 # update pbar
                 pbar.update(action.shape[1])
 
                 #update beta and lam
-                beta = beta * gamma
-                alpha = alpha * gamma
+                
+                #alpha = alpha * gamma
 
             pbar.close()
 

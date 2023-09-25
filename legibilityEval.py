@@ -284,6 +284,7 @@ if __name__ == "__main__":
                         top_checkpoints.append((checkpoint_file, score))
 
                 top_checkpoints.sort(key=lambda x: x[1], reverse=True)
+                # if there 
             
             for i in range(checkpoints_to_load):
 

@@ -83,7 +83,8 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
 
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
-
+        #print("alpha: ", alpha)
+        #print("beta: ", beta)
 
         for t in scheduler.timesteps:
             # 1. apply conditioning
@@ -95,7 +96,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             other_goals_conditional_output = [model(trajectory, t, local_cond = local_cond, global_cond = other_goal_cond) for other_goal_cond in other_goals_cond]
             conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
 
-            model_output = (1- alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
+            model_output = (1 - alpha + beta) * conditional_output + alpha * uncond_output - beta * conditional_other
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -110,7 +111,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals: torch.Tensor = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -205,6 +206,15 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
     # ========= training  ============
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
+    
+    def calculate_binary_goal(self, goal):
+        goal_cond = None
+        # dim of shape 
+        if goal.shape[-1] == 32:
+            condition = goal[:,:,2] > goal[:,:,9]
+            condition = condition.unsqueeze(-1).repeat(1,1,goal.shape[-1])
+            goal_cond = torch.where(condition, torch.full_like(goal, 2), torch.full_like(goal, 3))
+        return goal_cond
 
     def compute_loss(self, batch):
         # normalize input

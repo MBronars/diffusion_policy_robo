@@ -1,5 +1,5 @@
 _target_: diffusion_policy.workspace.train_diffusion_transformer_lowdim_workspace.TrainDiffusionTransformerLowdimWorkspace
-action_dim: 10
+action_dim: 7
 checkpoint:
   save_last_ckpt: true
   save_last_snapshot: false
@@ -10,7 +10,7 @@ checkpoint:
     monitor_key: test_mean_score
 dataloader:
   batch_size: 512
-  num_workers: 2
+  num_workers: 4
   persistent_workers: false
   pin_memory: true
   shuffle: true
@@ -21,15 +21,15 @@ ema:
   min_value: 0.0
   power: 0.75
   update_after_step: 0
-eval_save: /home/MBronars/Documents/ICML_paper/datasets/decision_diffuser.hdf5
-exp_name: 
-horizon: 16
+eval_save: /srv/rl2-lab/flash8/mbronars3/legibility/full_training_scan/trans/delta/retry/alpha.3_beta2.75_gamma.95.hdf5
+exp_name: default
+horizon: 10
 keypoint_visible_rate: 1.0
 logging:
   group: null
   id: null
   mode: online
-  name: 2022.12.29-21.58.57_decision_diffuser
+  name: 2022.12.29-21.58.57_train_diffusion_transformer_lowdim_stack_lowdim_long_delta_h10
   project: diffusion_policy_debug
   resume: true
   tags:
@@ -37,14 +37,14 @@ logging:
   - stack_lowdim
   - bronars
 multi_run:
-  run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/training_runs/2block/benchmarks
-  wandb_name_base: 2022.12.29-21.58.57_decision_diffuser
-n_action_steps: 4
+  run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/hyperparam_scan/2block_base_params
+  wandb_name_base: 2022.12.29-21.58.57_train_diffusion_transformer_lowdim_stack_lowdim_long_delta_h10
+n_action_steps: 8
 n_latency_steps: 0
-n_obs_steps: 16
-name: decision_diffuser
-obs_as_cond: false
-obs_dim: 64
+n_obs_steps: 2
+name: train_diffusion_transformer_lowdim_long
+obs_as_cond: true
+obs_dim: 32
 optimizer:
   betas:
   - 0.9
@@ -54,27 +54,27 @@ optimizer:
 past_action_visible: false
 policy:
   _target_: diffusion_policy.policy.diffusion_transformer_lowdim_policy.DiffusionTransformerLowdimPolicy
-  action_dim: 10
+  action_dim: 7
   guidance_weight: 0.0
-  horizon: 16
+  horizon: 10
   model:
     _target_: diffusion_policy.model.diffusion.transformer_for_diffusion.TransformerForDiffusion
     causal_attn: true
-    cond_dim: 0
-    horizon: 16
-    input_dim: 74
+    cond_dim: 64
+    horizon: 10
+    input_dim: 7
     n_cond_layers: 0
     n_emb: 256
     n_head: 4
     n_layer: 8
-    n_obs_steps: 16
-    obs_as_cond: false
-    output_dim: 74
+    n_obs_steps: 2
+    obs_as_cond: true
+    output_dim: 7
     p_drop_attn: 0.3
     p_drop_emb: 0.0
     time_as_cond: true
-  n_action_steps: 4
-  n_obs_steps: 16
+  n_action_steps: 8
+  n_obs_steps: 2
   noise_scheduler:
     _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
     beta_end: 0.02
@@ -85,19 +85,19 @@ policy:
     prediction_type: epsilon
     variance_type: fixed_small
   num_inference_steps: 100
-  obs_as_cond: false
-  obs_dim: 64
+  obs_as_cond: true
+  obs_dim: 32
   p_uncond: 0.25
   pred_action_steps_only: false
 pred_action_steps_only: false
 task:
-  abs_action: true
-  action_dim: 10
+  abs_action: false
+  action_dim: 7
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
-    abs_action: true
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
-    horizon: 16
+    abs_action: false
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
+    horizon: 10
     obs_keys:
     - object
     - robot0_eef_pos
@@ -107,23 +107,23 @@ task:
     pad_before: 1
     seed: 42
     val_ratio: 0.02
-  dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
+  dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
   dataset_type: ph
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
-    abs_action: true
-    alpha: -.5
-    beta: 0
+    abs_action: false
+    alpha: '.3'
+    beta: '2.75'
     crf: 22
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
     fps: 10
-    gamma: 1
+    gamma: '.95'
     max_steps: 400
-    n_action_steps: 4
-    n_envs: 10
+    n_action_steps: 8
+    n_envs: 15
     n_latency_steps: 0
-    n_obs_steps: 16
-    n_test: 40
+    n_obs_steps: 2
+    n_test: 30
     n_test_vis: 4
     n_train: 0
     n_train_vis: 2
@@ -139,25 +139,25 @@ task:
     test_start_seed: 100000
     train_start_idx: 0
   keypoint_dim: 3
-  name: decision_diffuser
-  obs_dim: 64
+  name: stack_lowdim
+  obs_dim: 32
   obs_keys:
   - object
   - robot0_eef_pos
   - robot0_eef_quat
   - robot0_gripper_qpos
-  task_name: 2block
-task_name: 2block
+  task_name: stack
+task_name: stack_lowdim_long
 training:
   checkpoint_every: 50
   debug: false
-  device: cuda
+  device: cuda:0
   gradient_accumulate_every: 1
   lr_scheduler: cosine
   lr_warmup_steps: 1000
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 2000
+  num_epochs: 1000
   resume: true
   rollout_every: 50
   sample_every: 5
@@ -167,7 +167,7 @@ training:
   val_every: 1
 val_dataloader:
   batch_size: 512
-  num_workers: 2
+  num_workers: 4
   persistent_workers: false
   pin_memory: true
   shuffle: false

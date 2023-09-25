@@ -307,6 +307,8 @@ class TrainDiffusionTransformerLowdimWorkspace(BaseWorkspace):
             cfg.task.env_runner,
             output_dir=self.output_dir)
         assert isinstance(env_runner, RobomimicLowdimRunner)
+        device = torch.device(cfg.training.device)
+        self.model.to(device)
         log, traj = env_runner.run(self.model, save_rollout=True)
         return traj
 

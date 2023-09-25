@@ -1,5 +1,6 @@
 _target_: diffusion_policy.workspace.train_diffusion_unet_lowdim_workspace.TrainDiffusionUnetLowdimWorkspace
 action_dim: 10
+eval_save: /srv/rl2-lab/flash8/mbronars3/ICRA/results/final_outputs/unet_h16_o2_a8.hdf5
 checkpoint:
   save_last_ckpt: true
   save_last_snapshot: false
@@ -120,7 +121,7 @@ task:
     max_steps: 400
     n_action_steps: 8
     n_envs: 10
-    alpha: 1
+    alpha: 0
     beta: 0
     gamma: 1
     n_latency_steps: 0
