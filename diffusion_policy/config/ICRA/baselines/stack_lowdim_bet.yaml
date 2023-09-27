@@ -9,7 +9,7 @@ checkpoint:
     mode: max
     monitor_key: test_mean_score
 dataloader:
-  batch_size: 512
+  batch_size: 64
   num_workers: 1
   persistent_workers: false
   pin_memory: true
@@ -32,46 +32,46 @@ logging:
 multi_run:
   run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/training_runs/2block/benchmarks
   wandb_name_base: 2022.12.27-19.30.17_train_bet_lowdim_lift_lowdim
-n_action_steps: 8
+n_action_steps: 5
 n_latency_steps: 0
-n_obs_steps: 2
+n_obs_steps: 5
 name: train_bet_lowdim
 obs_as_global_cond: false
 obs_as_local_cond: false
-obs_dim: 32
+obs_dim: 64
 optimizer:
   betas:
   - 0.9
   - 0.95
   learning_rate: 0.0001
-  weight_decay: 0.1
+  weight_decay: 0.0001
 past_action_visible: false
 policy:
   _target_: diffusion_policy.policy.bet_lowdim_policy.BETLowdimPolicy
   action_ae:
     _target_: diffusion_policy.model.bet.action_ae.discretizers.k_means.KMeansDiscretizer
     action_dim: 7
-    num_bins: 24
+    num_bins: 64
     predict_offsets: true
   horizon: 10
-  n_action_steps: 8
-  n_obs_steps: 2
+  n_action_steps: 5
+  n_obs_steps: 5
   obs_encoding_net:
     _target_: torch.nn.Identity
-    output_dim: 32
+    output_dim: 64
   state_prior:
     _target_: diffusion_policy.model.bet.latent_generators.mingpt.MinGPT
     action_dim: 7
     block_size: 10
     discrete_input: false
     focal_loss_gamma: 2.0
-    input_dim: 32
-    n_embd: 72
+    input_dim: 64
+    n_emb: 72
     n_head: 4
     n_layer: 4
     offset_loss_scale: 1000.0
     predict_offsets: true
-    vocab_size: 24
+    vocab_size: 64
 pred_action_steps_only: false
 task:
   abs_action: false
@@ -79,7 +79,7 @@ task:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
     abs_action: false
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
     horizon: 10
     obs_keys:
     - object
@@ -89,20 +89,20 @@ task:
     pad_after: 7
     pad_before: 1
     seed: 42
-    val_ratio: 0.02
-  dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
+    val_ratio: 0.2
+  dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
   dataset_type: mh
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
     abs_action: false
     crf: 22
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/workspace/datasets/ICRA/2block_random.hdf5
+    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
     fps: 10
     max_steps: 400
-    n_action_steps: 8
+    n_action_steps: 5
     n_envs: 10
     n_latency_steps: 0
-    n_obs_steps: 2
+    n_obs_steps: 5
     n_test: 20
     n_test_vis: 4
     n_train: 0
@@ -121,7 +121,7 @@ task:
     train_start_idx: 0
   keypoint_dim: 3
   name: lift_lowdim
-  obs_dim: 32
+  obs_dim: 64
   obs_keys:
   - object
   - robot0_eef_pos
@@ -148,7 +148,7 @@ training:
   tqdm_interval_sec: 1.0
   val_every: 1
 val_dataloader:
-  batch_size: 512
+  batch_size: 64
   num_workers: 1
   persistent_workers: false
   pin_memory: true

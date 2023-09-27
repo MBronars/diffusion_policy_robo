@@ -98,6 +98,8 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
 
             model_output = (1 - alpha + beta) * conditional_output + alpha * uncond_output - beta * conditional_other
 
+            # model_output = model(trajectory, t, local_cond = local_cond, global_cond = goal_cond)
+
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
                 model_output, t, trajectory, 
@@ -122,7 +124,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         nobs = self.normalizer['obs'].normalize(obs_dict['obs'])
         B, _, Do = nobs.shape
         To = self.n_obs_steps
-        assert Do == self.obs_dim
+        #assert Do == self.obs_dim
         T = self.horizon
         Da = self.action_dim
 
@@ -152,11 +154,14 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             global_other_conds = [torch.cat([global_cond, other_goal], dim=-1) for other_goal in other_goals]
             global_cond = torch.cat([global_cond, goal], dim=-1)
 
+
             shape = (B, T, Da)
             if self.pred_action_steps_only:
                 shape = (B, self.n_action_steps, Da)
             cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
+
+
         else:
             # condition through impainting
             shape = (B, T, Da+Do)
@@ -223,7 +228,6 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         obs = nbatch['obs']
         action = nbatch['action']
         goal = nbatch['goal']
-
         # handle different ways of passing observation
         local_cond = None
         global_cond = None

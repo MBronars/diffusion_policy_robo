@@ -29,9 +29,13 @@ class KitchenLowdimDataset(BaseLowdimDataset):
         for i in range(len(masks)):
             eps_len = int(masks[i].sum())
             obs = observations[i,:eps_len].astype(np.float32)
+            goal = obs[-1, 30:]
+            obs = obs[:,:30]
+            goal = goal[None,:].repeat(eps_len, axis=0)
             action = actions[i,:eps_len].astype(np.float32)
             data = {                              
                 'obs': obs,
+                'goal': goal,
                 'action': action
             }
             self.replay_buffer.add_episode(data)
@@ -68,6 +72,7 @@ class KitchenLowdimDataset(BaseLowdimDataset):
     def get_normalizer(self, mode='limits', **kwargs):
         data = {
             'obs': self.replay_buffer['obs'],
+            'goal': self.replay_buffer['goal'],
             'action': self.replay_buffer['action']
         }
         if 'range_eps' not in kwargs:

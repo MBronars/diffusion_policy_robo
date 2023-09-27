@@ -168,9 +168,9 @@ class RobomimicReplayImageDataset(BaseImageDataset):
             stat = array_to_stats(self.replay_buffer[key])
 
             # ee pose should not be handled by this first case -fix later
-            if key.endswith('pos') or key.endswith('positions') or key.endswith('pose'):
+            if key.endswith('pos') or key.endswith('positions') or key.endswith('pose') or key.endswith('position'):
                 this_normalizer = get_range_normalizer_from_stat(stat)
-            elif key.endswith('quat') or key.endswith('position'):
+            elif key.endswith('quat'):
                 # quaternion is in [-1,1] already
                 this_normalizer = get_identity_normalizer_from_stat(stat)
             elif key.endswith('qpos'):
@@ -297,7 +297,8 @@ def _convert_robomimic_to_replay(store, shape_meta, dataset_path, abs_action, ro
                 demo = demos[f'demo_{i}']
                 this_data.append(demo[data_key][:].astype(np.float32))
                 goal_item = np.zeros_like(demo[data_key][:].astype(np.float32))
-                goal_item[:] = demo[data_key][-1].astype(np.float32)
+                # zeroing out low dim data for the sake of learning
+                # goal_item[:] = demo[data_key][-1].astype(np.float32)
                 goal_data.append(goal_item)
             this_data = np.concatenate(this_data, axis=0)
             goal_data = np.concatenate(goal_data, axis=0)

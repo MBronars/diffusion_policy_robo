@@ -1,6 +1,5 @@
 _target_: diffusion_policy.workspace.train_ibc_dfo_lowdim_workspace.TrainIbcDfoLowdimWorkspace
-action_dim: 7
-eval_save: /srv/rl2-lab/flash8/mbronars3/legibility/baselines/ibc/epoch37ish.hdf5
+action_dim: 9
 checkpoint:
   save_last_ckpt: true
   save_last_snapshot: false
@@ -10,8 +9,8 @@ checkpoint:
     mode: max
     monitor_key: val_loss
 dataloader:
-  batch_size: 400
-  num_workers: 1
+  batch_size: 256
+  num_workers: 4
   persistent_workers: false
   pin_memory: true
   shuffle: true
@@ -23,21 +22,21 @@ logging:
   group: null
   id: null
   mode: online
-  name: 2023.01.11-05.12.53_train_ibc_dfo_lowdim_lift_lowdim
+  name: 2023.01.13-16.30.16_train_ibc_dfo_lowdim_kitchen_lowdim
   project: diffusion_policy_debug
   resume: true
   tags:
   - train_ibc_dfo_lowdim
-  - lift_lowdim
+  - kitchen_lowdim
   - default
 multi_run:
-  run_dir: /srv/rl2-lab/flash8/mbronars3/ICRA/results/training_runs/2block/benchmarks
-  wandb_name_base: 2023.01.11-05.12.53_train_ibc_dfo_lowdim_lift_lowdim
+  run_dir: data/outputs/2023.01.13/16.30.16_train_ibc_dfo_lowdim_kitchen_lowdim
+  wandb_name_base: 2023.01.13-16.30.16_train_ibc_dfo_lowdim_kitchen_lowdim
 n_action_steps: 1
 n_latency_steps: 0
 n_obs_steps: 2
 name: train_ibc_dfo_lowdim
-obs_dim: 64
+obs_dim: 60
 optimizer:
   _target_: torch.optim.AdamW
   betas:
@@ -49,76 +48,52 @@ optimizer:
 past_action_visible: false
 policy:
   _target_: diffusion_policy.policy.ibc_dfo_lowdim_policy.IbcDfoLowdimPolicy
-  action_dim: 7
+  action_dim: 9
   andy_train: false
   dropout: 0.1
   horizon: 2
   kevin_inference: false
   n_action_steps: 1
   n_obs_steps: 2
-  obs_dim: 64
+  obs_dim: 60
   pred_n_iter: 5
   pred_n_samples: 1024
   train_n_neg: 1024
 task:
-  abs_action: false
-  action_dim: 7
+  action_dim: 9
   dataset:
-    _target_: diffusion_policy.dataset.robomimic_replay_lowdim_dataset.RobomimicReplayLowdimDataset
-    abs_action: false
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
+    _target_: diffusion_policy.dataset.kitchen_lowdim_dataset.KitchenLowdimDataset
+    dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen
     horizon: 2
-    obs_keys:
-    - object
-    - robot0_eef_pos
-    - robot0_eef_quat
-    - robot0_gripper_qpos
     pad_after: 0
     pad_before: 1
     seed: 42
-    use_legacy_normalizer: false
-    val_ratio: 0.2
-  dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
-  dataset_type: mh
+    val_ratio: 0.1
+  dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen
   env_runner:
-    _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
-    abs_action: false
-    crf: 22
-    dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
-    fps: 10
-    max_steps: 400
+    _target_: diffusion_policy.env_runner.kitchen_lowdim_runner.KitchenLowdimRunner
+    dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen
+    fps: 12.5
+    max_steps: 280
     n_action_steps: 1
-    n_envs: 10
-    n_latency_steps: 0
+    n_envs: null
     n_obs_steps: 2
-    n_test: 40
+    n_test: 50
     n_test_vis: 4
-    n_train: 0
+    n_train: 6
     n_train_vis: 2
-    obs_keys:
-    - object
-    - robot0_eef_pos
-    - robot0_eef_quat
-    - robot0_gripper_qpos
     past_action: false
     render_hw:
-    - 128
-    - 128
+    - 240
+    - 360
     test_start_seed: 100000
-    tqdm_interval_sec: 1.0
-    train_start_idx: 0
+    train_start_seed: 0
   keypoint_dim: 3
-  name: lift_lowdim
-  obs_dim: 64
-  obs_keys:
-  - object
-  - robot0_eef_pos
-  - robot0_eef_quat
-  - robot0_gripper_qpos
-  task_name: lift
-task_name: lift_lowdim
+  name: kitchen_lowdim
+  obs_dim: 60
+task_name: kitchen_lowdim
 training:
-  checkpoint_every: 10
+  checkpoint_every: 25
   debug: false
   device: cuda:0
   gradient_accumulate_every: 1
@@ -126,17 +101,17 @@ training:
   lr_warmup_steps: 500
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 1500
+  num_epochs: 5000
   resume: true
-  rollout_every: 10
+  rollout_every: 25
   sample_every: 5
   sample_max_batch: 128
   seed: 42
   tqdm_interval_sec: 1.0
   val_every: 1
 val_dataloader:
-  batch_size: 400
-  num_workers: 1
+  batch_size: 256
+  num_workers: 4
   persistent_workers: false
   pin_memory: true
   shuffle: false

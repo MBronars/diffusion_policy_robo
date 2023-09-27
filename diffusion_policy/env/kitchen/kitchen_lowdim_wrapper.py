@@ -47,3 +47,6 @@ class KitchenLowdimWrapper(gym.Env):
     
     def step(self, a):
         return self.env.step(a)
+
+    def get_completed_tasks(self):
+        return self.env.completed_tasks

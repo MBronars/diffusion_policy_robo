@@ -47,8 +47,8 @@ obs_as_cond: true
 obs_dim: 32
 optimizer:
   betas:
-  - 0.9
   - 0.95
+  - 0.99
   learning_rate: 0.0001
   weight_decay: 0.001
 past_action_visible: false

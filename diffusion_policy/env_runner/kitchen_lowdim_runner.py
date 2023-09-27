@@ -22,6 +22,113 @@ from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
 
 module_logger = logging.getLogger(__name__)
 
+OBS_ELEMENT_INDICES = {
+    "bottom burner": np.array([11, 12]),
+    "top burner": np.array([15, 16]),
+    "light switch": np.array([17, 18]),
+    "slide cabinet": np.array([19]),
+    "hinge cabinet": np.array([20, 21]),
+    "microwave": np.array([22]),
+    "kettle": np.array([23, 24, 25, 26, 27, 28, 29]),
+}
+OBS_ELEMENT_GOALS = {
+    "bottom burner": np.array([-0.88, -0.01]),
+    "top burner": np.array([-0.92, -0.01]),
+    "light switch": np.array([-0.69, -0.05]),
+    "slide cabinet": np.array([0.37]),
+    "hinge cabinet": np.array([0.0, 1.45]),
+    "microwave": np.array([-0.75]),
+    "kettle": np.array([-0.23, 0.75, 1.62, 0.99, 0.0, 0.0, -0.06]),
+}
+
+base_goal = np.zeros(30)
+
+kettle_top_bottom_slide = base_goal.copy()
+kettle_top_bottom_slide[23] = -0.23
+kettle_top_bottom_slide[24] = 0.75
+kettle_top_bottom_slide[25] = 1.62
+kettle_top_bottom_slide[26] = 0.99
+kettle_top_bottom_slide[27] = 0.0
+kettle_top_bottom_slide[28] = 0.0
+kettle_top_bottom_slide[29] = -0.06
+kettle_top_bottom_slide[15] = -0.92
+kettle_top_bottom_slide[16] = -0.01
+kettle_top_bottom_slide[19] = 0.37
+
+kettle_top_bottom_slide[11] = -0.88
+kettle_top_bottom_slide[12] = -0.01
+
+kettle_top_switch_slide = base_goal.copy()
+kettle_top_switch_slide[23] = -0.23
+kettle_top_switch_slide[24] = 0.75
+kettle_top_switch_slide[25] = 1.62
+kettle_top_switch_slide[26] = 0.99
+kettle_top_switch_slide[27] = 0.0
+kettle_top_switch_slide[28] = 0.0
+kettle_top_switch_slide[29] = -0.06
+kettle_top_switch_slide[15] = -0.92
+kettle_top_switch_slide[16] = -0.01
+kettle_top_switch_slide[19] = 0.37
+
+kettle_top_switch_slide[17] = -0.69
+kettle_top_switch_slide[18] = -0.05
+
+
+
+top_bottom_switch_hinge = base_goal.copy()
+# top_bottom_switch_hinge[11] = -0.88
+# top_bottom_switch_hinge[12] = -0.01
+# top_bottom_switch_hinge[15] = -0.92
+# top_bottom_switch_hinge[16] = -0.01
+# top_bottom_switch_hinge[17] = -0.69
+# top_bottom_switch_hinge[18] = -0.05
+top_bottom_switch_hinge[20] = 0.0
+top_bottom_switch_hinge[21] = 1.45
+
+top_bottom_switch_slide = base_goal.copy()
+# top_bottom_switch_slide[11] = -0.88
+# top_bottom_switch_slide[12] = -0.01
+# top_bottom_switch_slide[15] = -0.92
+# top_bottom_switch_slide[16] = -0.01
+# top_bottom_switch_slide[17] = -0.69
+# top_bottom_switch_slide[18] = -0.05
+top_bottom_switch_slide[19] = 0.37
+
+microwave_kettle_top_slide = base_goal.copy()
+microwave_kettle_top_slide[22] = -0.75
+microwave_kettle_top_slide[23] = -0.23
+microwave_kettle_top_slide[24] = 0.75
+microwave_kettle_top_slide[25] = 1.62
+microwave_kettle_top_slide[26] = 0.99
+microwave_kettle_top_slide[27] = 0.0
+microwave_kettle_top_slide[28] = 0.0
+microwave_kettle_top_slide[29] = -0.06
+microwave_kettle_top_slide[15] = -0.92
+microwave_kettle_top_slide[16] = -0.01
+microwave_kettle_top_slide[19] = 0.37
+
+
+microwave_kettle_top_bottom = base_goal.copy()
+microwave_kettle_top_bottom[22] = -0.75
+microwave_kettle_top_bottom[23] = -0.23
+microwave_kettle_top_bottom[24] = 0.75
+microwave_kettle_top_bottom[25] = 1.62
+microwave_kettle_top_bottom[26] = 0.99
+microwave_kettle_top_bottom[27] = 0.0
+microwave_kettle_top_bottom[28] = 0.0
+microwave_kettle_top_bottom[29] = -0.06
+microwave_kettle_top_bottom[11] = -0.88
+microwave_kettle_top_bottom[12] = -0.01
+microwave_kettle_top_bottom[15] = -0.92
+microwave_kettle_top_bottom[16] = -0.01
+
+
+
+
+
+
+
+
 class KitchenLowdimRunner(BaseLowdimRunner):
     def __init__(self,
             output_dir,
@@ -208,6 +315,9 @@ class KitchenLowdimRunner(BaseLowdimRunner):
         all_rewards = [None] * n_inits
         last_info = [None] * n_inits
 
+        
+
+
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
             end = min(n_inits, start + n_envs)
@@ -225,6 +335,17 @@ class KitchenLowdimRunner(BaseLowdimRunner):
             env.call_each('run_dill_function', 
                 args_list=[(x,) for x in this_init_fns])
 
+            goals = [kettle_top_switch_slide.copy(), kettle_top_bottom_slide.copy()]
+            goal_dicts = [{'goal': goal} for goal in goals]
+            ngoals = [policy.normalizer.normalize(goal_dict) for goal_dict in goal_dicts]
+            goals = [ng['goal'] for ng in ngoals]
+            goal_chunks = [goal.repeat(n_envs, self.n_obs_steps, 1) for goal in goals]
+            goal_index = chunk_idx % len(goal_chunks)
+
+            goal = goal_chunks[goal_index][this_local_slice]
+            
+            other_goals = [other_goal[this_local_slice] for i, other_goal in enumerate(goal_chunks) if i != goal_index]
+
             # start rollout
             obs = env.reset()
             past_action = None
@@ -233,11 +354,23 @@ class KitchenLowdimRunner(BaseLowdimRunner):
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval BlockPushLowdimRunner {chunk_idx+1}/{n_chunks}", 
                 leave=False, mininterval=self.tqdm_interval_sec)
             done = False
+
+            alpha = .25
+            beta = 2
+            gamma = .5
+
+            counter = 0
+
             while not done:
+                # print(beta)
                 # create obs dict
+
+                obs = obs[:, :, :30]
+
                 np_obs_dict = {
                     'obs': obs.astype(np.float32)
                 }
+
                 if self.past_action and (past_action is not None):
                     # TODO: not tested
                     np_obs_dict['past_action'] = past_action[
@@ -249,7 +382,7 @@ class KitchenLowdimRunner(BaseLowdimRunner):
 
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict)
+                    action_dict = policy.predict_action(obs_dict, goal = goal, other_goals = other_goals, alpha=alpha, beta=beta)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -264,7 +397,31 @@ class KitchenLowdimRunner(BaseLowdimRunner):
 
                 # update pbar
                 pbar.update(action.shape[1])
+                beta = beta * gamma
+                alpha = alpha * gamma
+                gamma = gamma * gamma
+
             pbar.close()
+            completed_lists = env.call_each('get_completed_tasks')
+
+            tuple_of_tuples = tuple(tuple(lst) for lst in completed_lists)
+
+            # Use Counter to count the occurrences of each tuple
+            tuple_counts = Counter(tuple_of_tuples)
+
+            # Specify the file path where you want to save the counts
+            file_path = self.output_dir + '/counts.txt'
+
+            # Open the file for writing
+            with open(file_path, 'w') as file:
+                # Write the counts to the file
+                for tpl, count in tuple_counts.items():
+                    file.write(f"Tuple: {tpl}, Count: {count}\n")
+
+            print(f"Counts saved to {file_path}")
+
+            
+
 
             # collect data for this round
             all_video_paths[this_global_slice] = env.render()[this_local_slice]

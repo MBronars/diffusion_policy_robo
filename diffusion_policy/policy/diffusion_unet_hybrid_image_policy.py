@@ -6,6 +6,10 @@ import torch.nn.functional as F
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
+import random
+import time
+import copy
+
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
 from diffusion_policy.model.diffusion.conditional_unet1d import ConditionalUnet1D
@@ -15,6 +19,7 @@ from robomimic.algo import algo_factory
 from robomimic.algo.algo import PolicyAlgo
 import robomimic.utils.obs_utils as ObsUtils
 import robomimic.models.base_nets as rmbn
+import robomimic.models.obs_core as rmoc
 import diffusion_policy.model.vision.crop_randomizer as dmvc
 from diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
 
@@ -116,7 +121,7 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
         if eval_fixed_crop:
             replace_submodules(
                 root_module=obs_encoder,
-                predicate=lambda x: isinstance(x, rmbn.CropRandomizer),
+                predicate=lambda x: isinstance(x, rmoc.CropRandomizer),
                 func=lambda x: dmvc.CropRandomizer(
                     input_shape=x.input_shape,
                     crop_height=x.crop_height,
@@ -132,7 +137,8 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
         global_cond_dim = None
         if obs_as_global_cond:
             input_dim = action_dim
-            global_cond_dim = obs_feature_dim * n_obs_steps
+            # multiply global cond dim by two because we are adding goal observations
+            global_cond_dim = obs_feature_dim * n_obs_steps *2
 
         model = ConditionalUnet1D(
             input_dim=input_dim,
@@ -174,11 +180,17 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
     # ========= inference  ============
     def conditional_sample(self, 
             condition_data, condition_mask,
-            local_cond=None, global_cond=None,
-            generator=None,
+            local_cond=None,
+            goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
+            alpha=-.25, beta=-.25,
             # keyword arguments to scheduler.step
             **kwargs
             ):
+        # goal cond = conditioned on all states and all target goal states
+        # other goals cond obs = conditioned on observer pov and other goals from observer pov
+        # goal cond obs = conditioned on observer pov and target goal from observer pov
+        # uncond = conditioned on all states only
+
         model = self.model
         scheduler = self.noise_scheduler
 
@@ -187,17 +199,25 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
             dtype=condition_data.dtype,
             device=condition_data.device,
             generator=generator)
-    
+
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
+        #print("alpha: ", alpha)
+        #print("beta: ", beta)
 
         for t in scheduler.timesteps:
             # 1. apply conditioning
             trajectory[condition_mask] = condition_data[condition_mask]
 
             # 2. predict model output
-            model_output = model(trajectory, t, 
-                local_cond=local_cond, global_cond=global_cond)
+            conditional_output = model(trajectory, t, local_cond = local_cond, global_cond = goal_cond)
+            uncond_output = model(trajectory, t, local_cond = local_cond, global_cond = uncond)
+            other_goals_conditional_output = [model(trajectory, t, local_cond = local_cond, global_cond = other_goal_cond) for other_goal_cond in other_goals_cond]
+            conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
+
+            model_output = (1 - alpha + beta) * conditional_output + alpha * uncond_output - beta * conditional_other
+
+            # model_output = model(trajectory, t, local_cond = local_cond, global_cond = goal_cond)
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -211,8 +231,7 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
 
         return trajectory
 
-
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -234,15 +253,36 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
         # handle different ways of passing observation
         local_cond = None
         global_cond = None
+        # if self.obs_as_global_cond:
+        #     # condition through global feature
+        #     this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+        #     nobs_features = self.obs_encoder(this_nobs)
+        #     # reshape back to B, Do
+        #     global_cond = nobs_features.reshape(B, -1)
+        #     # empty data for action
+        #     cond_data = torch.zeros(size=(B, T, Da), device=device, dtype=dtype)
+        #     cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
+        #         # we are going to use obs as global cond for legibiltiy diffuser
         if self.obs_as_global_cond:
-            # condition through global feature
+            # condition throught global feature
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
             nobs_features = self.obs_encoder(this_nobs)
-            # reshape back to B, Do
             global_cond = nobs_features.reshape(B, -1)
-            # empty data for action
-            cond_data = torch.zeros(size=(B, T, Da), device=device, dtype=dtype)
+
+            goal = goal.reshape(goal.shape[0], -1)
+
+            other_goals = [other_goal.reshape(other_goal.shape[0], -1) for other_goal in other_goals]
+            null_goal = torch.zeros_like(goal)
+            global_cond_null = torch.cat([global_cond, null_goal], dim=-1)
+            global_other_conds = [torch.cat([global_cond, other_goal], dim=-1) for other_goal in other_goals]
+            global_cond = torch.cat([global_cond, goal], dim=-1)
+
+
+            shape = (B, T, Da)
+
+            cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
+
         else:
             # condition through impainting
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
@@ -259,9 +299,12 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
             cond_data, 
             cond_mask,
             local_cond=local_cond,
-            global_cond=global_cond,
+            goal_cond=global_cond,
+            other_goals_cond=global_other_conds,
+            uncond=global_cond_null,
+            alpha = alpha,
+            beta = beta,
             **self.kwargs)
-        
         # unnormalize prediction
         naction_pred = nsample[...,:Da]
         action_pred = self.normalizer['action'].unnormalize(naction_pred)
@@ -285,9 +328,11 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
         # normalize input
         assert 'valid_mask' not in batch
         nobs = self.normalizer.normalize(batch['obs'])
+        ngoal = self.normalizer.normalize(batch['goal'])
         nactions = self.normalizer['action'].normalize(batch['action'])
         batch_size = nactions.shape[0]
         horizon = nactions.shape[1]
+        To = self.n_obs_steps
 
         # handle different ways of passing observation
         local_cond = None
@@ -298,9 +343,22 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
             # reshape B, T, ... to B*T
             this_nobs = dict_apply(nobs, 
                 lambda x: x[:,:self.n_obs_steps,...].reshape(-1,*x.shape[2:]))
+            
+            this_ngoal = dict_apply(ngoal,
+                lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+
             nobs_features = self.obs_encoder(this_nobs)
-            # reshape back to B, Do
+            goal_features = self.obs_encoder(this_ngoal)
+
             global_cond = nobs_features.reshape(batch_size, -1)
+            goal = goal_features.reshape(batch_size, -1)
+            null_goal = torch.zeros_like(goal)
+
+            if random.random() > .2:#self.p_uncond:
+                global_cond = torch.cat([global_cond, null_goal], dim=-1)
+            else:
+                global_cond = torch.cat([global_cond, goal], dim=-1)
+
         else:
             # reshape B, T, ... to B*T
             this_nobs = dict_apply(nobs, lambda x: x.reshape(-1, *x.shape[2:]))
@@ -331,7 +389,6 @@ class DiffusionUnetHybridImagePolicy(BaseImagePolicy):
 
         # apply conditioning
         noisy_trajectory[condition_mask] = cond_data[condition_mask]
-        
         # Predict the noise residual
         pred = self.model(noisy_trajectory, timesteps, 
             local_cond=local_cond, global_cond=global_cond)

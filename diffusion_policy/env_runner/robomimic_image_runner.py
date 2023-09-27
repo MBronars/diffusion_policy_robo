@@ -166,73 +166,73 @@ class RobomimicImageRunner(BaseImageRunner):
         env_prefixs = list()
         env_init_fn_dills = list()
 
-        # train
-        with h5py.File(dataset_path, 'r') as f:
-            for i in range(n_train):
-                train_idx = train_start_idx + i
-                enable_render = i < n_train_vis
-                init_state = f[f'data/demo_{train_idx}/states'][0]
+        # # train
+        # with h5py.File(dataset_path, 'r') as f:
+        #     for i in range(n_train):
+        #         train_idx = train_start_idx + i
+        #         enable_render = i < n_train_vis
+        #         init_state = f[f'data/demo_{train_idx}/states'][0]
 
-                def init_fn(env, init_state=init_state, 
-                    enable_render=enable_render):
-                    # setup rendering
-                    # video_wrapper
-                    assert isinstance(env.env, VideoRecordingWrapper)
-                    env.env.video_recoder.stop()
-                    env.env.file_path = None
-                    if enable_render:
-                        filename = pathlib.Path(output_dir).joinpath(
-                            'media', wv.util.generate_id() + ".mp4")
-                        filename.parent.mkdir(parents=False, exist_ok=True)
-                        filename = str(filename)
-                        env.env.file_path = filename
+        #         def init_fn(env, init_state=init_state, 
+        #             enable_render=enable_render):
+        #             # setup rendering
+        #             # video_wrapper
+        #             assert isinstance(env.env, VideoRecordingWrapper)
+        #             env.env.video_recoder.stop()
+        #             env.env.file_path = None
+        #             if enable_render:
+        #                 filename = pathlib.Path(output_dir).joinpath(
+        #                     'media', wv.util.generate_id() + ".mp4")
+        #                 filename.parent.mkdir(parents=False, exist_ok=True)
+        #                 filename = str(filename)
+        #                 env.env.file_path = filename
 
-                    # switch to init_state reset
-                    assert isinstance(env.env.env, RobomimicImageWrapper)
-                    env.env.env.init_state = init_state
+        #             # switch to init_state reset
+        #             assert isinstance(env.env.env, RobomimicImageWrapper)
+        #             env.env.env.init_state = init_state
 
-                env_seeds.append(train_idx)
-                env_prefixs.append('train/')
-                env_init_fn_dills.append(dill.dumps(init_fn))
+        #         env_seeds.append(train_idx)
+        #         env_prefixs.append('train/')
+        #         env_init_fn_dills.append(dill.dumps(init_fn))
         
-        # test
-        for i in range(n_test):
-            seed = test_start_seed + i
-            enable_render = i < n_test_vis
+        # # test
+        # for i in range(n_test):
+        #     seed = test_start_seed + i
+        #     enable_render = i < n_test_vis
         
-            def init_fn(env, seed=seed, 
-                enable_render=enable_render):
-                # setup rendering
-                # video_wrapper
-                assert isinstance(env.env, VideoRecordingWrapper)
-                env.env.video_recoder.stop()
-                env.env.file_path = None
-                if enable_render:
-                    filename = pathlib.Path(output_dir).joinpath(
-                        'media', wv.util.generate_id() + ".mp4")
-                    filename.parent.mkdir(parents=False, exist_ok=True)
-                    filename = str(filename)
-                    env.env.file_path = filename
+        #     def init_fn(env, seed=seed, 
+        #         enable_render=enable_render):
+        #         # setup rendering
+        #         # video_wrapper
+        #         assert isinstance(env.env, VideoRecordingWrapper)
+        #         env.env.video_recoder.stop()
+        #         env.env.file_path = None
+        #         if enable_render:
+        #             filename = pathlib.Path(output_dir).joinpath(
+        #                 'media', wv.util.generate_id() + ".mp4")
+        #             filename.parent.mkdir(parents=False, exist_ok=True)
+        #             filename = str(filename)
+        #             env.env.file_path = filename
 
-                # switch to seed reset
-                assert isinstance(env.env.env, RobomimicImageWrapper)
-                env.env.env.init_state = None
-                env.seed(seed)
+        #         # switch to seed reset
+        #         assert isinstance(env.env.env, RobomimicImageWrapper)
+        #         env.env.env.init_state = None
+        #         env.seed(seed)
 
-            env_seeds.append(seed)
-            env_prefixs.append('test/')
-            env_init_fn_dills.append(dill.dumps(init_fn))
+        #     env_seeds.append(seed)
+        #     env_prefixs.append('test/')
+        #     env_init_fn_dills.append(dill.dumps(init_fn))
 
-        env = AsyncVectorEnv(env_fns, dummy_env_fn=dummy_env_fn)
-        # env = SyncVectorEnv(env_fns)
+        # env = AsyncVectorEnv(env_fns, dummy_env_fn=dummy_env_fn)
+        # # env = SyncVectorEnv(env_fns)
 
 
-        self.env_meta = env_meta
-        self.env = env
-        self.env_fns = env_fns
-        self.env_seeds = env_seeds
-        self.env_prefixs = env_prefixs
-        self.env_init_fn_dills = env_init_fn_dills
+        # self.env_meta = env_meta
+        # self.env = env
+        # self.env_fns = env_fns
+        # self.env_seeds = env_seeds
+        # self.env_prefixs = env_prefixs
+        # self.env_init_fn_dills = env_init_fn_dills
         self.fps = fps
         self.crf = crf
         self.n_obs_steps = n_obs_steps
