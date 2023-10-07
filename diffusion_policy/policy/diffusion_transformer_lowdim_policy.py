@@ -1,9 +1,10 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
 import time
+import copy
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
@@ -59,14 +60,17 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
     
     # ========= inference  ============
     def conditional_sample(self, 
-            condition_data, condition_mask,
-            cond=None, cond_null=None, generator=None,
-            other_cond=None,
-            alpha=-0.25,
-            beta=-0.25,
+            condition_data, condition_mask,null_cond_data = None,
+            goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
+            alpha=-.25, beta=-.25,
             # keyword arguments to scheduler.step
             **kwargs
             ):
+        # goal cond = conditioned on all states and all target goal states
+        # other goals cond obs = conditioned on observer pov and other goals from observer pov
+        # goal cond obs = conditioned on observer pov and target goal from observer pov
+        # uncond = conditioned on all states only
+
         model = self.model
         scheduler = self.noise_scheduler
 
@@ -75,23 +79,32 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             dtype=condition_data.dtype,
             device=condition_data.device,
             generator=generator)
-    
+
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
 
+
         for t in scheduler.timesteps:
             # 1. apply conditioning
+            if null_cond_data is not None:
+                null_trajectory = trajectory.clone()
+                null_trajectory[condition_mask] = null_cond_data[condition_mask]
+
             trajectory[condition_mask] = condition_data[condition_mask]
 
-            # 2. predict model output
-            conditional_output = model(trajectory, t, cond)
-            unconditional_output = model(trajectory, t, cond_null)
-            conditional_other_goal = model(trajectory, t, other_cond)
-            #model_output = unconditional_output + self.guidance_weight * (conditional_output - unconditional_output)
-            #model_output = unconditional_output + 3 * (conditional_output - unconditional_output)
-            #model_output = conditional_output + .5 * (conditional_output - conditional_other_goal)
+            if null_cond_data is not None:
+                conditional_output = model(trajectory, t, goal_cond)
+                uncond_output = model(null_trajectory, t, goal_cond)
+                model_output = (1- alpha) * conditional_output + alpha * uncond_output
+            
+            else:
+                # 2. predict model output
+                conditional_output = model(trajectory, t, goal_cond)
+                uncond_output = model(trajectory, t, uncond)
+                other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
+                conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
 
-            model_output = (1 - alpha - beta) * conditional_output + alpha * unconditional_output + beta * conditional_other_goal
+                model_output = (1- alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -104,9 +117,18 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         trajectory[condition_mask] = condition_data[condition_mask]        
 
         return trajectory
+    
+    def calculate_binary_goal(self, goal):
+        goal_cond = None
+        # dim of shape 
+        if goal.shape[-1] == 32:
+            condition = goal[:,:,2] > goal[:,:,9]
+            condition = condition.unsqueeze(-1).repeat(1,1,goal.shape[-1])
+            goal_cond = torch.where(condition, torch.full_like(goal, 2), torch.full_like(goal, 3))
+        return goal_cond
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.tensor] = None, other_goal: Dict[str, torch.tensor] = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor = None, other_goals: torch.Tensor = None, alpha = 1, beta = 0.5) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -118,7 +140,10 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         
         B, _, Do = nobs.shape
         To = self.n_obs_steps
-        assert Do == self.obs_dim
+        if self.obs_as_cond:
+            assert Do == self.obs_dim
+        else:
+            Do = self.obs_dim
         T = self.horizon
         Da = self.action_dim
 
@@ -130,12 +155,18 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         cond = None
         cond_data = None
         cond_mask = None
+        null_cond_data = None
+        other_conds = [None]
+        cond_null = None
+
         if self.obs_as_cond:
             cond = nobs[:,:To]
-            null_goal = torch.zeros_like(goal_dict['goal'])
-            cond_null = torch.cat([cond, null_goal[:,:To]], dim=-1)
-            other_cond = torch.cat([cond, other_goal['goal'][:,:To]], dim=-1)
-            cond = torch.cat([cond, goal_dict['goal'][:,:To]], dim=-1)
+            goal = goal[:,:To]
+            other_goals = [other_goal[:,:To] for other_goal in other_goals]
+            null_goal = torch.zeros_like(goal)
+            cond_null = torch.cat([cond, null_goal], dim=-1)
+            other_conds = [torch.cat([cond, other_goal], dim=-1) for other_goal in other_goals]
+            cond = torch.cat([cond, goal], dim=-1)
             shape = (B, T, Da)
             if self.pred_action_steps_only:
                 shape = (B, self.n_action_steps, Da)
@@ -143,21 +174,25 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
         else:
             # condition through impainting
-            shape = (B, T, Da+Do)
+            goal_cond = self.calculate_binary_goal(goal)
+            null_cond = torch.zeros_like(goal_cond) - 2
+            shape = (B, T, Da + Do)
             cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
-            cond_data[:,:To,Da:] = nobs[:,:To]
+            cond_data[:,:To,Da:] = torch.cat([nobs[:,:To], goal_cond[:,:To]], dim=-1)
+            null_cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
+            null_cond_data[:,:To,Da:] = torch.cat([nobs[:,:To], null_cond[:,:To]], dim=-1)
             cond_mask[:,:To,Da:] = True
 
         # run sampling
         nsample = self.conditional_sample(
             cond_data, 
             cond_mask,
-            cond=cond,
-            cond_null=cond_null,
-            other_cond=other_cond,
-            alpha=alpha,
-            beta=beta,
+            goal_cond= cond, 
+            other_goals_cond = other_conds, 
+            uncond = cond_null,
+            null_cond_data = null_cond_data, 
+            alpha=alpha, beta=beta,
             **self.kwargs)
         
         # unnormalize prediction
@@ -219,7 +254,13 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
                 end = start + self.n_action_steps
                 trajectory = action[:,start:end]
         else:
-            trajectory = torch.cat([action, obs], dim=-1)
+            goal_cond = self.calculate_binary_goal(goal)
+            null_cond = torch.zeros_like(goal_cond) - 2
+            if random.random() > self.p_uncond:
+                obs_goal = torch.cat([obs[:,:self.n_obs_steps], goal_cond[:,:self.n_obs_steps]], dim=-1)
+            else:
+                obs_goal = torch.cat([obs[:,:self.n_obs_steps], null_cond[:,:self.n_obs_steps]], dim=-1)
+            trajectory = torch.cat([action, obs_goal], dim=-1)
         
         # generate impainting mask
         if self.pred_action_steps_only:
@@ -261,4 +302,5 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
         loss = loss * loss_mask.type(loss.dtype)
         loss = reduce(loss, 'b ... -> b (...)', 'mean')
         loss = loss.mean()
+        
         return loss

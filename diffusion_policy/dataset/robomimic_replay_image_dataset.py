@@ -167,15 +167,16 @@ class RobomimicReplayImageDataset(BaseImageDataset):
         for key in self.lowdim_keys:
             stat = array_to_stats(self.replay_buffer[key])
 
-            if key.endswith('pos'):
+            # ee pose should not be handled by this first case -fix later
+            if key.endswith('pos') or key.endswith('positions') or key.endswith('pose'):
                 this_normalizer = get_range_normalizer_from_stat(stat)
-            elif key.endswith('quat'):
+            elif key.endswith('quat') or key.endswith('position'):
                 # quaternion is in [-1,1] already
                 this_normalizer = get_identity_normalizer_from_stat(stat)
             elif key.endswith('qpos'):
                 this_normalizer = get_range_normalizer_from_stat(stat)
             else:
-                raise RuntimeError('unsupported')
+                raise RuntimeError(f'Unknown key: {key}')
             normalizer[key] = this_normalizer
 
         # image
@@ -308,6 +309,9 @@ def _convert_robomimic_to_replay(store, shape_meta, dataset_path, abs_action, ro
                 )
                 assert this_data.shape == (n_steps,) + tuple(shape_meta['action']['shape'])
             else:
+                if shape_meta['obs'][key]['shape'] == [1]:
+                    this_data = this_data.reshape(-1,1)
+                    goal_data = goal_data.reshape(-1,1)
                 assert this_data.shape == (n_steps,) + tuple(shape_meta['obs'][key]['shape'])
             _ = data_group.array(
                 name=key,

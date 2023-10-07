@@ -14,6 +14,10 @@ from diffusion_policy.gym_util.sync_vector_env import SyncVectorEnv
 from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
 from diffusion_policy.gym_util.video_recording_wrapper import VideoRecordingWrapper, VideoRecorder
 from diffusion_policy.model.common.rotation_transformer import RotationTransformer
+from diffusion_policy.model.common.normalizer import LinearNormalizer
+from copy import deepcopy
+
+from robosuite.environments.manipulation.stack import Stack
 
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
 from diffusion_policy.common.pytorch_util import dict_apply
@@ -24,13 +28,12 @@ import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.obs_utils as ObsUtils
 
 
+
 def create_env(env_meta, shape_meta, enable_render=True):
     modality_mapping = collections.defaultdict(list)
     for key, attr in shape_meta['obs'].items():
         modality_mapping[attr.get('type', 'low_dim')].append(key)
     ObsUtils.initialize_obs_modality_mapping_from_dict(modality_mapping)
-
-    enable_render = False
 
     env = EnvUtils.create_env_from_metadata(
         env_meta=env_meta,
@@ -168,7 +171,6 @@ class RobomimicImageRunner(BaseImageRunner):
             for i in range(n_train):
                 train_idx = train_start_idx + i
                 enable_render = i < n_train_vis
-                enable_render = False
                 init_state = f[f'data/demo_{train_idx}/states'][0]
 
                 def init_fn(env, init_state=init_state, 
@@ -197,8 +199,7 @@ class RobomimicImageRunner(BaseImageRunner):
         for i in range(n_test):
             seed = test_start_seed + i
             enable_render = i < n_test_vis
-            enable_render = False
-
+        
             def init_fn(env, seed=seed, 
                 enable_render=enable_render):
                 # setup rendering
@@ -244,8 +245,38 @@ class RobomimicImageRunner(BaseImageRunner):
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
+        self.normalizer = LinearNormalizer()
+        self.dataset_path = dataset_path
+    
+    def get_goal(self, policy):
 
-    def run(self, policy: BaseImagePolicy):
+        obs_keys = [
+                'robot0_eef_pos', 
+                'robot0_eef_quat', 
+                'robot0_gripper_qpos',
+                'agentview_image',
+                'robot0_eye_in_hand_image',
+                'robot0_joint_pos']
+
+        goals = Stack._get_goal(self.dataset_path)
+
+        # only keep the keys we need
+        goals = [{k: goal[k] for k in obs_keys} for goal in goals]
+
+        # permute(1, 2, 0) if 'image' in key else don't permute
+        goals_t = [{k: np.transpose(v, (2, 0, 1)) if 'image' in k else v for k, v in g.items()}for g in goals]
+
+        # add two dimensions at the beggining of each value
+        goals_expanded = [{k: np.expand_dims(np.expand_dims(v, axis=0), axis=0) for k, v in g.items()}for g in goals_t]
+
+        ngoals = [policy.normalizer.normalize(goal) for goal in goals_expanded]
+
+        this_ngoals = [dict_apply(ngoal, lambda x: x[:,:,...].reshape(-1,*x.shape[2:])) for ngoal in ngoals]
+        goals_obs_features = [policy.obs_encoder(this_ngoal) for this_ngoal in this_ngoals]
+        
+        return goals_obs_features
+
+    def run(self, policy: BaseImagePolicy, save_rollout=False):
         device = policy.device
         dtype = policy.dtype
         env = self.env
@@ -259,15 +290,10 @@ class RobomimicImageRunner(BaseImageRunner):
         all_video_paths = [None] * n_inits
         all_rewards = [None] * n_inits
 
-        temp_goal, other_goals = self.get_goal(color = 'r')
+        goals = self.get_goal(policy)
 
-        # Generate n_inits different goals and stack them along the first dimension
-        repeated_goal = np.stack([temp_goal for _ in range(n_inits)], axis=0)
-        repeated_other_goal = np.stack([other_goals for _ in range(n_inits)], axis=0)
-
-        # Repeat the repeated_goal array n_obs_steps times along the middle dimension
-        all_goals = np.repeat(repeated_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
-        all_other_goals = np.repeat(repeated_other_goal[:, np.newaxis, ...], self.n_obs_steps, axis=1)
+        goal_chunks = [goal.repeat(n_envs, self.n_obs_steps, 1) for goal in goals]
+        trajs = []
 
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
@@ -288,14 +314,22 @@ class RobomimicImageRunner(BaseImageRunner):
 
             # start rollout
             obs = env.reset()
-            alpha = self.alpha
-            beta = self.beta
+            alpha = float(self.alpha)
+            beta = float(self.beta)
+
+            traj = dict(actions=[], rewards=[], dones=[], states=[], obs=[], next_obs=[])
+
             past_action = None
             policy.reset()
 
             env_name = self.env_meta['env_name']
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Image {chunk_idx+1}/{n_chunks}", 
                 leave=False, mininterval=self.tqdm_interval_sec)
+            
+            goal = goal_chunks[chunk_idx % len(goal_chunks)][this_local_slice]
+            other_goals = [other_goal[this_local_slice] for i, other_goal in enumerate(goal_chunks) if i != chunk_idx % len(goal_chunks)]
+
+
             
             done = False
             while not done:
@@ -311,9 +345,10 @@ class RobomimicImageRunner(BaseImageRunner):
                     lambda x: torch.from_numpy(x).to(
                         device=device))
 
+                
                 # run policy
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict, goal_dict, alpha, beta)
+                    action_dict = policy.predict_action(obs_dict, goal, other_goals, alpha, beta)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -329,21 +364,40 @@ class RobomimicImageRunner(BaseImageRunner):
                 if self.abs_action:
                     env_action = self.undo_transform_action(action)
 
-                obs, reward, done, info = env.step(env_action)
+                next_obs, reward, done, info = env.step(env_action)
+                finished = env._check_success()
+                finished = [f['task'] for f in finished]
+                finished = np.all(finished)
+
+                if save_rollout:
+                    # collect transition
+                    traj["actions"].append(env_action)
+                    traj["rewards"].append(reward)
+                    traj["dones"].append(done)
+                    traj["obs"].append(obs)
+                    traj["next_obs"].append(next_obs)
+                
+                obs = deepcopy(next_obs)
                 done = np.all(done)
                 past_action = action
+
+                done = done or finished
 
                 # update pbar
                 pbar.update(action.shape[1])
 
-                # update beta and lam
+                # update alpha and beta
                 alpha = alpha * self.gamma
                 beta = beta * self.gamma
+
             pbar.close()
 
             # collect data for this round
             all_video_paths[this_global_slice] = env.render()[this_local_slice]
             all_rewards[this_global_slice] = env.call('get_attr', 'reward')[this_local_slice]
+
+            if save_rollout:
+                trajs.append(traj)
         # clear out video buffer
         _ = env.reset()
         
@@ -377,6 +431,8 @@ class RobomimicImageRunner(BaseImageRunner):
             value = np.mean(value)
             log_data[name] = value
 
+        if save_rollout:
+            return log_data, trajs
         return log_data
 
     def undo_transform_action(self, action):

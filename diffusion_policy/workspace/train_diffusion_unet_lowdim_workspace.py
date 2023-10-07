@@ -25,6 +25,7 @@ from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.policy.diffusion_unet_lowdim_policy import DiffusionUnetLowdimPolicy
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
+from diffusion_policy.env_runner.robomimic_lowdim_runner import RobomimicLowdimRunner
 from diffusion_policy.common.checkpoint_util import TopKCheckpointManager
 from diffusion_policy.common.json_logger import JsonLogger
 from diffusion_policy.model.common.lr_scheduler import get_scheduler
@@ -213,7 +214,7 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                 policy.eval()
 
                 # run rollout
-                if (self.epoch % cfg.training.rollout_every) == 0:
+                if (self.epoch % cfg.training.rollout_every) == 0 and (self.epoch != 0 or cfg.training.debug):
                     runner_log = env_runner.run(policy)
                     # log all
                     step_log.update(runner_log)
@@ -236,32 +237,32 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                             # log epoch average validation loss
                             step_log['val_loss'] = val_loss
 
-                # run diffusion sampling on a training batch
-                if (self.epoch % cfg.training.sample_every) == 0:
-                    with torch.no_grad():
-                        # sample trajectory from training set, and evaluate difference
-                        batch = train_sampling_batch
-                        obs_dict = {'obs': batch['obs']}
-                        gt_action = batch['action']
+                # # run diffusion sampling on a training batch
+                # if (self.epoch % cfg.training.sample_every) == 0:
+                #     with torch.no_grad():
+                #         # sample trajectory from training set, and evaluate difference
+                #         batch = train_sampling_batch
+                #         obs_dict = {'obs': batch['obs']}
+                #         gt_action = batch['action']
                         
-                        result = policy.predict_action(obs_dict)
-                        if cfg.pred_action_steps_only:
-                            pred_action = result['action']
-                            start = cfg.n_obs_steps - 1
-                            end = start + cfg.n_action_steps
-                            gt_action = gt_action[:,start:end]
-                        else:
-                            pred_action = result['action_pred']
-                        mse = torch.nn.functional.mse_loss(pred_action, gt_action)
-                        # log
-                        step_log['train_action_mse_error'] = mse.item()
-                        # release RAM
-                        del batch
-                        del obs_dict
-                        del gt_action
-                        del result
-                        del pred_action
-                        del mse
+                #         result = policy.predict_action(obs_dict)
+                #         if cfg.pred_action_steps_only:
+                #             pred_action = result['action']
+                #             start = cfg.n_obs_steps - 1
+                #             end = start + cfg.n_action_steps
+                #             gt_action = gt_action[:,start:end]
+                #         else:
+                #             pred_action = result['action_pred']
+                #         mse = torch.nn.functional.mse_loss(pred_action, gt_action)
+                #         # log
+                #         step_log['train_action_mse_error'] = mse.item()
+                #         # release RAM
+                #         del batch
+                #         del obs_dict
+                #         del gt_action
+                #         del result
+                #         del pred_action
+                #         del mse
                 
                 # checkpoint
                 if (self.epoch % cfg.training.checkpoint_every) == 0:
@@ -293,6 +294,22 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                 json_logger.log(step_log)
                 self.global_step += 1
                 self.epoch += 1
+    
+    def eval(self, ckpt_path=None) -> dict:
+
+        cfg = copy.deepcopy(self.cfg)
+        #raise error if ckpt_path is None
+        if ckpt_path is None:
+            raise ValueError("ckpt_path must be provided")
+        self.load_checkpoint(path=ckpt_path)
+        # configure env
+        env_runner: RobomimicLowdimRunner
+        env_runner = hydra.utils.instantiate(
+            cfg.task.env_runner,
+            output_dir=self.output_dir)
+        assert isinstance(env_runner, RobomimicLowdimRunner)
+        log, traj = env_runner.run(self.model, save_rollout=True)
+        return traj
 
 @hydra.main(
     version_base=None,

@@ -19,6 +19,7 @@ import wandb
 import tqdm
 import numpy as np
 import shutil
+import torch.nn as nn
 
 from diffusion_policy.common.pytorch_util import dict_apply, optimizer_to
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
@@ -213,7 +214,7 @@ class TrainDiffusionTransformerLowdimWorkspace(BaseWorkspace):
                 policy.eval()
 
                 # run rollout
-                if (self.epoch % cfg.training.rollout_every) == 0:
+                if (self.epoch % cfg.training.rollout_every) == 0 and (self.epoch != 0 or cfg.training.debug):
                     runner_log = env_runner.run(policy)
                     # log all
                     step_log.update(runner_log)
@@ -306,7 +307,7 @@ class TrainDiffusionTransformerLowdimWorkspace(BaseWorkspace):
             cfg.task.env_runner,
             output_dir=self.output_dir)
         assert isinstance(env_runner, RobomimicLowdimRunner)
-        log, traj = env_runner.rollout(self.model)
+        log, traj = env_runner.run(self.model, save_rollout=True)
         return traj
 
 @hydra.main(

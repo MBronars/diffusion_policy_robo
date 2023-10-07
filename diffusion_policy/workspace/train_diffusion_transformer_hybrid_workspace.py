@@ -19,10 +19,12 @@ import wandb
 import tqdm
 import numpy as np
 import shutil
+import torch.nn as nn
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.policy.diffusion_transformer_hybrid_image_policy import DiffusionTransformerHybridImagePolicy
 from diffusion_policy.dataset.base_dataset import BaseImageDataset
 from diffusion_policy.env_runner.base_image_runner import BaseImageRunner
+from diffusion_policy.env_runner.robomimic_image_runner import RobomimicImageRunner
 from diffusion_policy.common.checkpoint_util import TopKCheckpointManager
 from diffusion_policy.common.json_logger import JsonLogger
 from diffusion_policy.common.pytorch_util import dict_apply, optimizer_to
@@ -210,7 +212,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 policy.eval()
 
                 # run rollout
-                if (self.epoch % cfg.training.rollout_every) == 0:
+                if (self.epoch % cfg.training.rollout_every) == 0 and (self.epoch != 0 or cfg.training.debug):
                     runner_log = env_runner.run(policy)
                     # log all
                     step_log.update(runner_log)
@@ -282,6 +284,22 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 json_logger.log(step_log)
                 self.global_step += 1
                 self.epoch += 1
+    
+    def eval(self, ckpt_path=None) -> dict:
+
+        cfg = copy.deepcopy(self.cfg)
+        #raise error if ckpt_path is None
+        if ckpt_path is None:
+            raise ValueError("ckpt_path must be provided")
+        self.load_checkpoint(path=ckpt_path)
+        # configure env
+        env_runner: RobomimicImageRunner
+        env_runner = hydra.utils.instantiate(
+            cfg.task.env_runner,
+            output_dir=self.output_dir)
+        assert isinstance(env_runner, RobomimicImageRunner)
+        log, traj = env_runner.run(self.model, save_rollout=True)
+        return traj
 
 @hydra.main(
     version_base=None,

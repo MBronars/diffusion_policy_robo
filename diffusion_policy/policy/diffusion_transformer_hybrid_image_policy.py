@@ -186,10 +186,11 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
     def conditional_sample(self, 
             condition_data, condition_mask,
             goal_cond=None, other_goals_cond =[None], uncond = None, generator=None,
-            alpha=1.0, beta=.5, lam = 0.5,
+            alpha=-.25, beta=-.25,
             # keyword arguments to scheduler.step
             **kwargs
             ):
+
         # goal cond = conditioned on all states and all target goal states
         # other goals cond obs = conditioned on observer pov and other goals from observer pov
         # goal cond obs = conditioned on observer pov and target goal from observer pov
@@ -203,7 +204,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             dtype=condition_data.dtype,
             device=condition_data.device,
             generator=generator)
-    
+
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
 
@@ -213,14 +214,11 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
 
             # 2. predict model output
             conditional_output = model(trajectory, t, goal_cond)
-            uncond = model(trajectory, t, uncond)
+            uncond_output = model(trajectory, t, uncond)
             other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
+            conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
 
-            conditional_other = sum(other_goals_conditional_output)
-
-            conditional_diff = sum([(conditional_output - other_goal_conditional_output) for other_goal_conditional_output in other_goals_conditional_output])
-
-            model_output = alpha * conditional_output - beta * uncond - lam * conditional_other
+            model_output = (1 - alpha - beta) * conditional_output + alpha * uncond_output + beta * conditional_other
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -235,7 +233,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_dict: Dict[str, torch.Tensor], other_goals_dict: List[Dict[str, torch.Tensor]], alpha=1.0, beta=.5, lam = 0.5,) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_features: torch.Tensor, other_goals_features: List[torch.Tensor], alpha=1.0, beta=.5, lam = 0.5,) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -243,10 +241,10 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         assert 'past_action' not in obs_dict # not implemented yet
         # normalize input
         nobs = self.normalizer.normalize(obs_dict)
-        ngoal = self.normalizer.normalize(goal_dict)
-        null_goal = dict_apply(ngoal, lambda x: torch.zeros_like(x))
-        null_ngoal = self.normalizer.normalize(null_goal)
-        nother_goals = [self.normalizer.normalize(other_goal_dict) for other_goal_dict in other_goals_dict]
+        # ngoal = self.normalizer.normalize(goal_dict)
+        # null_goal = dict_apply(ngoal, lambda x: torch.zeros_like(x))
+        # null_ngoal = self.normalizer.normalize(null_goal)
+        # nother_goals = [self.normalizer.normalize(other_goal_dict) for other_goal_dict in other_goals_dict]
 
         value = next(iter(nobs.values()))
         B, To = value.shape[:2]
@@ -265,20 +263,21 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         cond_mask = None
         if self.obs_as_cond:
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
-            this_ngoal = dict_apply(ngoal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
-            this_other_goals = [dict_apply(other_goal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:])) for other_goal in nother_goals]
-            this_null_ngoal = dict_apply(null_ngoal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+            # this_ngoal = dict_apply(ngoal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+            # this_other_goals = [dict_apply(other_goal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:])) for other_goal in nother_goals]
+            # this_null_ngoal = dict_apply(null_ngoal, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
 
             nobs_features = self.obs_encoder(this_nobs)
-            goal_features = self.obs_encoder(this_ngoal)
-            null_goal_features = self.obs_encoder(this_null_ngoal)
-            other_goals_features = [self.obs_encoder(other_goal) for other_goal in this_other_goals]
+            # goal_features = self.obs_encoder(this_ngoal)
+            # null_goal_features = self.obs_encoder(this_null_ngoal)
+            # other_goals_features = [self.obs_encoder(other_goal) for other_goal in this_other_goals]
 
             # reshape back to B, To, Do
             obs_root = nobs_features.reshape(B, To, -1)
             goal_root = goal_features.reshape(B, To, -1)
             other_goals_root = [other_goal_features.reshape(B, To, -1) for other_goal_features in other_goals_features]
-            null_goal_root = null_goal_features.reshape(B, To, -1)
+            null_goal_root = torch.zeros_like(goal_root)
+            # null_goal_root = null_goal_features.reshape(B, To, -1)
 
             goal_cond = torch.cat([obs_root, goal_root], dim=-1)
             uncond = torch.cat([obs_root, null_goal_root], dim=-1)
@@ -293,8 +292,8 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             # condition through impainting
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
             nobs_features = self.obs_encoder(this_nobs)
-            # reshape back to B, T, Do
-            nobs_features = nobs_features.reshape(B, T, -1)
+            # reshape back to B, To, Do
+            nobs_features = nobs_features.reshape(B, To, -1)
             shape = (B, T, Da+Do)
             cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
@@ -310,7 +309,6 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             uncond = uncond,
             alpha = alpha, 
             beta = beta, 
-            lam =  lam,
             **self.kwargs)
         
         # unnormalize prediction
@@ -376,13 +374,14 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
 
             nobs_features = self.obs_encoder(this_nobs)
             ngoal_features = self.obs_encoder(this_ngoal)
-            null_goal_features = self.obs_encoder(dict_apply(this_ngoal, lambda x: torch.zeros_like(x)))
+            # null_goal_features = self.obs_encoder(dict_apply(this_ngoal, lambda x: torch.zeros_like(x)))
 
             obs_root = nobs_features.reshape(batch_size, To, -1)
             goal_root = ngoal_features.reshape(batch_size, To, -1)
-            null_goal_root = null_goal_features.reshape(batch_size, To, -1)
+            # null_goal_root = null_goal_features.reshape(batch_size, To, -1)
+            null_goal_root = torch.zeros_like(goal_root)
 
-            if random.random() < .2:
+            if random.random() < .25:
                 cond = torch.cat([obs_root, null_goal_root], dim=-1)
             else:
                 cond = torch.cat([obs_root, goal_root], dim=-1)

@@ -64,7 +64,7 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
         return x
 
     # ========= inference  ============
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal: torch.Tensor, other_goals = None, alpha = None, beta = None) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
@@ -75,13 +75,16 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
         nobs = self.normalizer['obs'].normalize(obs_dict['obs'])
         B, _, Do = nobs.shape
         To = self.n_obs_steps
-        assert Do == self.obs_dim
+        #assert Do == self.obs_dim
+        Do = self.obs_dim
         T = self.horizon
         Da = self.action_dim
         Ta = self.n_action_steps
 
         # only take necessary obs
         this_obs = nobs[:,:To]
+        this_ngoal = goal[:,:To]
+        this_cond = torch.cat([this_obs, this_ngoal], dim=-1)
         naction_stats = self.get_naction_stats()
 
         # first sample
@@ -98,7 +101,7 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
             noise_scale = 3e-2
             for i in range(self.pred_n_iter):
                 # Compute energies.
-                logits = self.forward(this_obs, samples)
+                logits = self.forward(this_cond, samples)
                 probs = F.softmax(logits, dim=-1)
 
                 # Resample with replacement.
@@ -110,7 +113,7 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
                 samples = samples.clamp(min=naction_stats['min'], max=naction_stats['max'])
 
             # Return target with highest probability.
-            logits = self.forward(this_obs, samples)
+            logits = self.forward(this_cond, samples)
             probs = F.softmax(logits, dim=-1)
             best_idxs = probs.argmax(dim=-1)
             acts_n = samples[torch.arange(samples.size(0)), best_idxs, :]
@@ -120,7 +123,7 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
             resample_std = torch.tensor(3e-2, device=self.device)
             for i in range(self.pred_n_iter):
                 # Forward pass.
-                logits = self.forward(this_obs, samples) # (B, N)
+                logits = self.forward(this_cond, samples) # (B, N)
                 prob = torch.softmax(logits, dim=-1)
 
                 if i < (self.pred_n_iter - 1):
@@ -148,6 +151,7 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
         nbatch = self.normalizer.normalize(batch)
         nobs = nbatch['obs']
         naction = nbatch['action']
+        ngoal = nbatch['goal']
 
         # shapes
         Do = self.obs_dim
@@ -158,6 +162,10 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
         B = naction.shape[0]
 
         this_obs = nobs[:,:To]
+        this_goal = ngoal[:,:To]
+
+        this_cond = torch.cat([this_obs, this_goal], dim=-1)
+
         start = To - 1
         end = start + Ta
         this_action = naction[:,start:end]
@@ -185,14 +193,14 @@ class IbcDfoLowdimPolicy(BaseLowdimPolicy):
             labels = torch.zeros(action_samples.shape[:2], 
                 dtype=this_action.dtype, device=this_action.device)
             labels[:,0] = 1
-            logits = self.forward(this_obs, action_samples)
+            logits = self.forward(this_cond, action_samples)
             # (B, N)
             logits = torch.log_softmax(logits, dim=-1)
             loss = -torch.mean(torch.sum(logits * labels, axis=-1))
         else:
             labels = torch.zeros((B,),dtype=torch.int64, device=this_action.device)
             # training
-            logits = self.forward(this_obs, action_samples)
+            logits = self.forward(this_cond, action_samples)
             loss = F.cross_entropy(logits, labels)
         return loss
 

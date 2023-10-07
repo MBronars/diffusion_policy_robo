@@ -60,6 +60,7 @@ class RobomimicImageWrapper(gym.Env):
 
 
     def get_observation(self, raw_obs=None):
+
         if raw_obs is None:
             raw_obs = self.env.get_observation()
         
@@ -100,7 +101,7 @@ class RobomimicImageWrapper(gym.Env):
         else:
             # random reset
             raw_obs = self.env.reset()
-
+        
         # return obs
         obs = self.get_observation(raw_obs)
         return obs
@@ -116,6 +117,12 @@ class RobomimicImageWrapper(gym.Env):
         img = np.moveaxis(self.render_cache, 0, -1)
         img = (img * 255).astype(np.uint8)
         return img
+    
+    def check_success(self):
+        return self.env.is_success()
+    
+    def set_goal(self, goal):
+        self.env.set_goal(goal)
 
 
 def test():
