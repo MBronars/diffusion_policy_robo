@@ -387,7 +387,7 @@ class RobomimicImageRunner(BaseImageRunner):
                 pbar.update(action.shape[1])
 
                 # update alpha and beta
-                alpha = alpha * self.gamma
+                # alpha = alpha * self.gamma
                 beta = beta * self.gamma
 
             pbar.close()

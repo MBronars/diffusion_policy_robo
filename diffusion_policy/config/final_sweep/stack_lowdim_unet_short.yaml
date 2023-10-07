@@ -5,7 +5,7 @@ checkpoint:
   save_last_snapshot: false
   topk:
     format_str: epoch={epoch:04d}-test_mean_score={test_mean_score:.3f}-val_loss={val_loss:.3f}.ckpt
-    k: 15
+    k: 5
     mode: max
     monitor_key: val_loss
 dataloader:
@@ -21,7 +21,7 @@ ema:
   min_value: 0.0
   power: 0.75
   update_after_step: 0
-eval_save: /srv/rl2-lab/flash8/mbronars3/legibility/full_training_scan/unet_delta_default_sweep/new_trained_conditional.hdf5
+eval_save: /srv/rl2-lab/flash8/mbronars3/legibility/2block_short_obs/short_obs_test.hdf5
 exp_name: obs_global_rerun
 horizon: 16
 keypoint_dim: 3
@@ -115,7 +115,7 @@ task:
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_lowdim_runner.RobomimicLowdimRunner
     abs_action: false
-    alpha: -.5
+    alpha: 0
     beta: 0
     crf: 22
     dataset_path: /srv/rl2-lab/flash8/mbronars3/ICRA/datasets/2block_image.hdf5
@@ -123,10 +123,10 @@ task:
     gamma: 1
     max_steps: 400
     n_action_steps: 8
-    n_envs: 25
+    n_envs: 15
     n_latency_steps: 0
     n_obs_steps: 2
-    n_test: 100
+    n_test: 30
     n_test_vis: 3
     n_train: 0
     n_train_vis: 2
@@ -139,7 +139,7 @@ task:
     render_hw:
     - 128
     - 128
-    test_start_seed: 13000
+    test_start_seed: 15000
     tqdm_interval_sec: 1.0
     train_start_idx: 0
   keypoint_dim: 3
@@ -153,7 +153,7 @@ task:
   task_name: lift
 task_name: lift_lowdim
 training:
-  checkpoint_every: 25
+  checkpoint_every: 10
   debug: false
   device: cuda:0
   gradient_accumulate_every: 1
@@ -163,7 +163,7 @@ training:
   max_val_steps: null
   num_epochs: 300
   resume: true
-  rollout_every: 25
+  rollout_every: 10
   sample_every: 5
   seed: 42
   tqdm_interval_sec: 1.0

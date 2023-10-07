@@ -148,8 +148,18 @@ def _data_to_obs(raw_obs, raw_actions, obs_keys, abs_action, rotation_transforme
 
     goal = np.zeros_like(obs)
     last_obs = obs[-1]
-    goal[:] = last_obs
+    goal[:, [0, 1, 2, 7, 8, 9]] = last_obs[[0, 1, 2, 7, 8, 9]]
 
+    # just testing this for block reach
+
+
+    # # goal = np.concatenate([
+    # #     np.zeros_like(raw_obs[key]) if key != 'object' else raw_obs[key][:, [0, 1, 2, 7, 8, 9]]
+    # #     for key in obs_keys
+    # # ], axis=-1).astype(np.float32)
+
+    # real_goal = goal[-1]
+    # goal[:] = real_goal
 
     if abs_action:
         is_dual_arm = False

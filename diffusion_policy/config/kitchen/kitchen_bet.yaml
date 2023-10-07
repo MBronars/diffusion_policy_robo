@@ -7,7 +7,7 @@ checkpoint:
     format_str: epoch={epoch:04d}-test_mean_score={test_mean_score:.3f}-val_loss={val_loss:.4f}.ckpt
     k: 15
     mode: max
-    monitor_key: val_loss
+    monitor_key: test_mean_score
 dataloader:
   batch_size: 64
   num_workers: 4
@@ -76,14 +76,14 @@ pred_action_steps_only: false
 task:
   action_dim: 9
   dataset:
-    _target_: diffusion_policy.dataset.kitchen_mjl_lowdim_dataset.KitchenMjlLowdimDataset
-    dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen_demos_multitask
+    _target_: diffusion_policy.dataset.kitchen_lowdim_dataset.KitchenLowdimDataset
+    dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen
     horizon: 12
     pad_after: 0
     pad_before: 2
     seed: 42
     val_ratio: 0.1
-  dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen_demos_multitask
+  dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen
   env_runner:
     _target_: diffusion_policy.env_runner.kitchen_lowdim_runner.KitchenLowdimRunner
     dataset_dir: /srv/rl2-lab/flash8/mbronars3/ICLR/dataset/kitchen

@@ -11,10 +11,13 @@ import wandb.sdk.data_types.video as wv
 import gym
 import gym.spaces
 import multiprocessing as mp
+import random
 from diffusion_policy.gym_util.async_vector_env import AsyncVectorEnv
 from diffusion_policy.gym_util.sync_vector_env import SyncVectorEnv
 from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
 from diffusion_policy.gym_util.video_recording_wrapper import VideoRecordingWrapper, VideoRecorder
+
+from collections import Counter
 
 from diffusion_policy.policy.base_lowdim_policy import BaseLowdimPolicy
 from diffusion_policy.common.pytorch_util import dict_apply
@@ -40,94 +43,67 @@ OBS_ELEMENT_GOALS = {
     "microwave": np.array([-0.75]),
     "kettle": np.array([-0.23, 0.75, 1.62, 0.99, 0.0, 0.0, -0.06]),
 }
+name_dict = {
+    "kbhs" : ["kettle", "bottom burner", "hinge cabinet", "slide cabinet"],
+    "kbls" : ["kettle", "bottom burner", "light switch", "slide cabinet"],
+    "klhs" : ["kettle", "light switch", "hinge cabinet", "slide cabinet"],
+    "ktbs" : ["kettle", "top burner", "bottom burner", "slide cabinet"],
+    "ktls" : ["kettle", "top burner", "light switch", "slide cabinet"],
+    "mbhs" : ["microwave", "bottom burner", "hinge cabinet", "slide cabinet"],
+    "mbls" : ["microwave", "bottom burner", "light switch", "slide cabinet"],
+    "mkbh" : ["microwave", "kettle", "bottom burner", "hinge cabinet"],
+    "mkbs" : ["microwave", "kettle", "bottom burner", "slide cabinet"],
+    "mkhs" : ["microwave", "kettle", "hinge cabinet", "slide cabinet"],
+    "mkls" : ["microwave", "kettle", "light switch", "slide cabinet"],
+    "mkth" : ["microwave", "kettle", "top burner", "hinge cabinet"],
+    "mktl" : ["microwave", "kettle", "top burner", "light switch"],
+    "mtbh" : ["microwave", "top burner", "bottom burner", "hinge cabinet"],
+    "mtbs" : ["microwave", "top burner", "bottom burner", "slide cabinet"],
+    "tbhs" : ["top burner", "bottom burner", "hinge cabinet", "slide cabinet"],
+    "tbls" : ["top burner", "bottom burner", "light switch", "slide cabinet"],
+    "kblh" : ["kettle", "bottom burner", "light switch", "hinge cabinet"],
+    "ktbh" : ["kettle", "top burner", "bottom burner", "hinge cabinet"],
+    "ktbl" : ["kettle", "top burner", "bottom burner", "light switch"],
+    "mbls" : ["microwave", "bottom burner", "light switch", "slide cabinet"],
+    "mklh" : ["microwave", "kettle", "light switch", "hinge cabinet"],
+    "mlhs" : ["microwave", "light switch", "hinge cabinet", "slide cabinet"],
+    "mtbl" : ["microwave", "top burner", "bottom burner", "light switch"],
+    "mtls" : ["microwave", "top burner", "light switch", "slide cabinet"],
+}
 
+test_names = {
+    "mktb" : ["microwave", "kettle", "top burner", "bottom burner"],
+    "mkts" : ["microwave", "kettle", "top burner", "slide cabinet"],
+    "tblh" : ["top burner", "bottom burner", "light switch", "hinge cabinet"],
+    "tbls" : ["top burner", "bottom burner", "light switch", "slide cabinet"],
+    "b" : ["bottom burner"],
+    "m" : ["microwave"],
+    "t" : ["top burner"],
+    "mktlhs" : ["microwave", "kettle", "top burner", "light switch", "hinge cabinet", "slide cabinet"],
+    "mktblh" : ["microwave", "kettle", "top burner", "bottom burner", "light switch", "hinge cabinet"],
+    "ktblhs" : ["kettle", "top burner", "bottom burner", "light switch", "hinge cabinet", "slide cabinet"],
+    "mtblhs" : ["microwave", "top burner", "bottom burner", "light switch", "hinge cabinet", "slide cabinet"],
+    "mktbhs" : ["microwave", "kettle", "top burner", "bottom burner", "hinge cabinet", "slide cabinet"],
+}
+
+
+goal_dict = {}
+test_dict = {}
 base_goal = np.zeros(30)
 
-kettle_top_bottom_slide = base_goal.copy()
-kettle_top_bottom_slide[23] = -0.23
-kettle_top_bottom_slide[24] = 0.75
-kettle_top_bottom_slide[25] = 1.62
-kettle_top_bottom_slide[26] = 0.99
-kettle_top_bottom_slide[27] = 0.0
-kettle_top_bottom_slide[28] = 0.0
-kettle_top_bottom_slide[29] = -0.06
-kettle_top_bottom_slide[15] = -0.92
-kettle_top_bottom_slide[16] = -0.01
-kettle_top_bottom_slide[19] = 0.37
+for key, value in name_dict.items():
+    indices = np.concatenate([OBS_ELEMENT_INDICES[elem] for elem in value])
+    goals = np.concatenate([OBS_ELEMENT_GOALS[elem] for elem in value])
+    temp = base_goal.copy()
+    temp[indices] = goals
+    goal_dict[key] = temp
 
-kettle_top_bottom_slide[11] = -0.88
-kettle_top_bottom_slide[12] = -0.01
-
-kettle_top_switch_slide = base_goal.copy()
-kettle_top_switch_slide[23] = -0.23
-kettle_top_switch_slide[24] = 0.75
-kettle_top_switch_slide[25] = 1.62
-kettle_top_switch_slide[26] = 0.99
-kettle_top_switch_slide[27] = 0.0
-kettle_top_switch_slide[28] = 0.0
-kettle_top_switch_slide[29] = -0.06
-kettle_top_switch_slide[15] = -0.92
-kettle_top_switch_slide[16] = -0.01
-kettle_top_switch_slide[19] = 0.37
-
-kettle_top_switch_slide[17] = -0.69
-kettle_top_switch_slide[18] = -0.05
-
-
-
-top_bottom_switch_hinge = base_goal.copy()
-# top_bottom_switch_hinge[11] = -0.88
-# top_bottom_switch_hinge[12] = -0.01
-# top_bottom_switch_hinge[15] = -0.92
-# top_bottom_switch_hinge[16] = -0.01
-# top_bottom_switch_hinge[17] = -0.69
-# top_bottom_switch_hinge[18] = -0.05
-top_bottom_switch_hinge[20] = 0.0
-top_bottom_switch_hinge[21] = 1.45
-
-top_bottom_switch_slide = base_goal.copy()
-# top_bottom_switch_slide[11] = -0.88
-# top_bottom_switch_slide[12] = -0.01
-# top_bottom_switch_slide[15] = -0.92
-# top_bottom_switch_slide[16] = -0.01
-# top_bottom_switch_slide[17] = -0.69
-# top_bottom_switch_slide[18] = -0.05
-top_bottom_switch_slide[19] = 0.37
-
-microwave_kettle_top_slide = base_goal.copy()
-microwave_kettle_top_slide[22] = -0.75
-microwave_kettle_top_slide[23] = -0.23
-microwave_kettle_top_slide[24] = 0.75
-microwave_kettle_top_slide[25] = 1.62
-microwave_kettle_top_slide[26] = 0.99
-microwave_kettle_top_slide[27] = 0.0
-microwave_kettle_top_slide[28] = 0.0
-microwave_kettle_top_slide[29] = -0.06
-microwave_kettle_top_slide[15] = -0.92
-microwave_kettle_top_slide[16] = -0.01
-microwave_kettle_top_slide[19] = 0.37
-
-
-microwave_kettle_top_bottom = base_goal.copy()
-microwave_kettle_top_bottom[22] = -0.75
-microwave_kettle_top_bottom[23] = -0.23
-microwave_kettle_top_bottom[24] = 0.75
-microwave_kettle_top_bottom[25] = 1.62
-microwave_kettle_top_bottom[26] = 0.99
-microwave_kettle_top_bottom[27] = 0.0
-microwave_kettle_top_bottom[28] = 0.0
-microwave_kettle_top_bottom[29] = -0.06
-microwave_kettle_top_bottom[11] = -0.88
-microwave_kettle_top_bottom[12] = -0.01
-microwave_kettle_top_bottom[15] = -0.92
-microwave_kettle_top_bottom[16] = -0.01
-
-
-
-
-
-
-
+for key, value in test_names.items():
+    indices = np.concatenate([OBS_ELEMENT_INDICES[elem] for elem in value])
+    goals = np.concatenate([OBS_ELEMENT_GOALS[elem] for elem in value])
+    temp = base_goal.copy()
+    temp[indices] = goals
+    test_dict[key] = temp
 
 class KitchenLowdimRunner(BaseLowdimRunner):
     def __init__(self,
@@ -158,6 +134,9 @@ class KitchenLowdimRunner(BaseLowdimRunner):
 
         task_fps = 12.5
         steps_per_render = int(max(task_fps // fps, 1))
+
+        n_test = 40
+        n_train = 0
 
         def env_fn():
             from diffusion_policy.env.kitchen.v0 import KitchenAllV0
@@ -316,6 +295,7 @@ class KitchenLowdimRunner(BaseLowdimRunner):
         last_info = [None] * n_inits
 
         
+        total_completed_tupples = []
 
 
         for chunk_idx in range(n_chunks):
@@ -335,16 +315,25 @@ class KitchenLowdimRunner(BaseLowdimRunner):
             env.call_each('run_dill_function', 
                 args_list=[(x,) for x in this_init_fns])
 
-            goals = [kettle_top_switch_slide.copy(), kettle_top_bottom_slide.copy()]
+
+            goals = [test_dict["b"], test_dict["b"]]
             goal_dicts = [{'goal': goal} for goal in goals]
             ngoals = [policy.normalizer.normalize(goal_dict) for goal_dict in goal_dicts]
             goals = [ng['goal'] for ng in ngoals]
             goal_chunks = [goal.repeat(n_envs, self.n_obs_steps, 1) for goal in goals]
-            goal_index = chunk_idx % len(goal_chunks)
+
+            goal_index = 0#chunk_idx % len(goal_chunks)
 
             goal = goal_chunks[goal_index][this_local_slice]
             
             other_goals = [other_goal[this_local_slice] for i, other_goal in enumerate(goal_chunks) if i != goal_index]
+
+            # select n_env random goals from goal_dict, there can be repeats
+            # random_goals = np.array(random.choices(list(goal_dict.values()), k=n_envs))
+            # goal = np.repeat(random_goals[:, np.newaxis, :], self.n_obs_steps, axis=1)
+            # goal = torch.from_numpy(goal).to(device=device)
+            # goal = goal.float()
+            # other_goals = [goal.clone()]
 
             # start rollout
             obs = env.reset()
@@ -355,9 +344,9 @@ class KitchenLowdimRunner(BaseLowdimRunner):
                 leave=False, mininterval=self.tqdm_interval_sec)
             done = False
 
-            alpha = .25
-            beta = 2
-            gamma = .5
+            alpha = .5
+            beta = 0
+            gamma = 1
 
             counter = 0
 
@@ -399,29 +388,10 @@ class KitchenLowdimRunner(BaseLowdimRunner):
                 pbar.update(action.shape[1])
                 beta = beta * gamma
                 alpha = alpha * gamma
-                gamma = gamma * gamma
 
             pbar.close()
             completed_lists = env.call_each('get_completed_tasks')
-
-            tuple_of_tuples = tuple(tuple(lst) for lst in completed_lists)
-
-            # Use Counter to count the occurrences of each tuple
-            tuple_counts = Counter(tuple_of_tuples)
-
-            # Specify the file path where you want to save the counts
-            file_path = self.output_dir + '/counts.txt'
-
-            # Open the file for writing
-            with open(file_path, 'w') as file:
-                # Write the counts to the file
-                for tpl, count in tuple_counts.items():
-                    file.write(f"Tuple: {tpl}, Count: {count}\n")
-
-            print(f"Counts saved to {file_path}")
-
-            
-
+            total_completed_tupples.extend(completed_lists)
 
             # collect data for this round
             all_video_paths[this_global_slice] = env.render()[this_local_slice]
@@ -432,6 +402,21 @@ class KitchenLowdimRunner(BaseLowdimRunner):
         # use info to record the order of task completion?
         # also report the probably to completing n tasks (different aggregation of reward).
 
+        tuple_of_tuples = tuple(tuple(lst) for lst in total_completed_tupples)
+
+        # Use Counter to count the occurrences of each tuple
+        tuple_counts = Counter(tuple_of_tuples)
+
+        # Specify the file path where you want to save the counts
+        file_path = self.output_dir + '/counts.txt'
+
+        # Open the file for writing
+        with open(file_path, 'w') as file:
+            # Write the counts to the file
+            for tpl, count in tuple_counts.items():
+                file.write(f"Tuple: {tpl}, Count: {count}\n")
+
+        print(f"Counts saved to {file_path}")
         # log
         log_data = dict()
         prefix_total_reward_map = collections.defaultdict(list)

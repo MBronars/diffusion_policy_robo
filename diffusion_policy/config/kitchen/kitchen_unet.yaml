@@ -102,7 +102,7 @@ task:
     pad_before: 1
     robot_noise_ratio: 0.1
     seed: 42
-    val_ratio: 0.02
+    val_ratio: 0.1
   env_runner:
     _target_: diffusion_policy.env_runner.kitchen_lowdim_runner.KitchenLowdimRunner
     abs_action: true
@@ -112,10 +112,10 @@ task:
     n_action_steps: 8
     n_envs: null
     n_obs_steps: 2
-    n_test: 10
-    n_test_vis: 4
-    n_train: 10
-    n_train_vis: 2
+    n_test: 20
+    n_test_vis: 5
+    n_train: 0
+    n_train_vis: 0
     past_action: false
     render_hw:
     - 240
@@ -129,7 +129,7 @@ task:
   robot_noise_ratio: 0.1
 task_name: kitchen_lowdim
 training:
-  checkpoint_every: 50
+  checkpoint_every: 10
   debug: false
   device: cuda:0
   gradient_accumulate_every: 1
@@ -139,7 +139,7 @@ training:
   max_val_steps: null
   num_epochs: 5000
   resume: true
-  rollout_every: 50
+  rollout_every: 10
   sample_every: 5
   seed: 42
   tqdm_interval_sec: 1.0

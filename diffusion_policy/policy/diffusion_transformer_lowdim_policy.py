@@ -101,6 +101,17 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             else:
                 # 2. predict model output
                 conditional_output = model(trajectory, t, goal_cond)
+                # take average of 10 generated conditional outputs
+                # total_conditional_output = [model(trajectory, t, goal_cond) for i in range(10)]
+                # conditional_output = sum(total_conditional_output) / len(average_conditional_output)
+
+                # total_uncond_output = [model(trajectory, t, uncond) for i in range(10)]
+                # uncond_output = sum(total_uncond_output) / len(average_uncond_output)
+
+                # other_goals_conditional_output_total = [[model(trajectory, t, other_goal_cond) for i in range(10)] for other_goal_cond in other_goals_cond]
+                # other_goals_conditional_output = [sum(other_goals_conditional_output_total[i]) / len(other_goals_conditional_output_total[i]) for i in range(len(other_goals_conditional_output_total))]
+                # conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
+
                 uncond_output = model(trajectory, t, uncond)
                 other_goals_conditional_output = [model(trajectory, t, other_goal_cond) for other_goal_cond in other_goals_cond]
                 conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)

@@ -25,7 +25,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             obs_as_global_cond=False,
             pred_action_steps_only=False,
             oa_step_convention=False,
-            p_uncond=0.25, 
+            p_uncond=0.2, 
             # parameters passed to step
             **kwargs):
         super().__init__()
@@ -96,7 +96,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             other_goals_conditional_output = [model(trajectory, t, local_cond = local_cond, global_cond = other_goal_cond) for other_goal_cond in other_goals_cond]
             conditional_other = sum(other_goals_conditional_output) / len(other_goals_conditional_output)
 
-            model_output = (1 - alpha + beta) * conditional_output + alpha * uncond_output - beta * conditional_other
+            model_output =  (1 + alpha + beta) * conditional_output - alpha * uncond_output - beta * conditional_other
 
             # model_output = model(trajectory, t, local_cond = local_cond, global_cond = goal_cond)
 
@@ -243,7 +243,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             goal = goal[:, :self.n_obs_steps,:].reshape(goal.shape[0], -1)
             null_goal = torch.zeros_like(goal)
 
-            if random.random() > self.p_uncond:
+            if random.random() > .2:#self.p_uncond:
                 global_cond = torch.cat([global_cond, null_goal], dim=-1)
             else:
                 global_cond = torch.cat([global_cond, goal], dim=-1)

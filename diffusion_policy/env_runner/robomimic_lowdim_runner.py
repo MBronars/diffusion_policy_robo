@@ -31,7 +31,6 @@ import robomimic.utils.obs_utils as ObsUtils
 import robomimic.utils.tensor_utils as TensorUtils
 
 
-
 def create_env(env_meta, obs_keys):
     ObsUtils.initialize_obs_modality_mapping_from_dict(
         {'low_dim': obs_keys})
@@ -252,6 +251,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 'robot0_gripper_qpos']
         
         raw_goals = Stack._get_goal(self.dataset_path)
+
         goals = [np.concatenate([raw_goal[key] for key in obs_keys], axis=-1).astype(np.float32) for raw_goal in raw_goals]
         goal_dicts = [{'goal': goal} for goal in goals]
         ngoals = [policy.normalizer.normalize(goal_dict) for goal_dict in goal_dicts]
@@ -395,6 +395,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 #     beta = float(self.beta)
                 # else:
                 beta = beta * gamma
+                alpha = alpha * gamma
                 
                 beta_step += 1
 

@@ -9,6 +9,27 @@ from diffusion_policy.common.sampler import SequenceSampler, get_val_mask
 from diffusion_policy.model.common.normalizer import LinearNormalizer, SingleFieldLinearNormalizer
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 
+
+OBS_ELEMENT_INDICES = {
+    "bottom burner": np.array([11, 12]),
+    "top burner": np.array([15, 16]),
+    "light switch": np.array([17, 18]),
+    "slide cabinet": np.array([19]),
+    "hinge cabinet": np.array([20, 21]),
+    "microwave": np.array([22]),
+    "kettle": np.array([23, 24, 25, 26, 27, 28, 29]),
+}
+OBS_ELEMENT_GOALS = {
+    "bottom burner": np.array([-0.88, -0.01]),
+    "top burner": np.array([-0.92, -0.01]),
+    "light switch": np.array([-0.69, -0.05]),
+    "slide cabinet": np.array([0.37]),
+    "hinge cabinet": np.array([0.0, 1.45]),
+    "microwave": np.array([-0.75]),
+    "kettle": np.array([-0.23, 0.75, 1.62, 0.99, 0.0, 0.0, -0.06]),
+}
+BONUS_THRESH = 0.3
+
 class KitchenLowdimDataset(BaseLowdimDataset):
     def __init__(self,
             dataset_dir,
@@ -29,8 +50,23 @@ class KitchenLowdimDataset(BaseLowdimDataset):
         for i in range(len(masks)):
             eps_len = int(masks[i].sum())
             obs = observations[i,:eps_len].astype(np.float32)
-            goal = obs[-1, 30:]
             obs = obs[:,:30]
+            goal = obs[-1,:]
+
+            raw_goal = obs[-1, :]
+
+            goal = np.zeros(30)
+
+            # mask out the elements that are not within the bonus threshold for each task
+            for goals, thresholds in OBS_ELEMENT_GOALS.items():
+                current = raw_goal[OBS_ELEMENT_INDICES[goals]]
+                target = thresholds
+                distance = np.linalg.norm(current - target)
+                from IPython import embed; embed()
+                include = distance < BONUS_THRESH
+                if include:
+                    goal[OBS_ELEMENT_INDICES[goals]] = current
+            
             goal = goal[None,:].repeat(eps_len, axis=0)
             action = actions[i,:eps_len].astype(np.float32)
             data = {                              

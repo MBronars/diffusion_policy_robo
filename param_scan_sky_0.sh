@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Define parameter ranges
-alpha_values=("-.2" "-.1" "0" ".1" ".2")
-beta_values=("1.5")
-gamma_values=(".99" ".95" ".85" ".75" )
+alpha_values=("-.25" "-.2" "-.15" "-.1" "0")
+beta_values=("1" "1.5" "2" "2.5" "3")
+gamma_values=(".99" ".95" ".75" )
 
-output_file="/srv/rl2-lab/flash8/mbronars3/legibility/full_training_scan/unet_delta_default_sweep/unet_output_0.txt"
+output_file="/srv/rl2-lab/flash8/mbronars3/legibility/ICLR_final/block_reach/ablations_e125/unet_output_0.txt"
 num_samples=40  # Number of random samples
 
 # Clear or create the output file
@@ -41,9 +41,9 @@ for ((i=0; i<num_samples; i++)); do
   python /srv/rl2-lab/flash8/mbronars3/ICRA/scripts/update_yaml_0.py $alpha $beta $gamma
 
   # Run your program with the current random parameter combination and capture the output
-  python robomimicEval.py --config-dir /srv/rl2-lab/flash8/mbronars3/workspace/diffusion_policy_robo/diffusion_policy/config/final_sweep --config-name stack_lowdim_unet_0.yaml  hydra.run.dir='/srv/rl2-lab/flash8/mbronars3/legibility/runs/${now:%H.%M.%S}_${name}_${task_name}'
+  python robomimicEval.py --config-dir /srv/rl2-lab/flash8/mbronars3/workspace/diffusion_policy_robo/diffusion_policy/config/ICLR --config-name block_reach_unet.yaml  hydra.run.dir='/srv/rl2-lab/flash8/mbronars3/legibility/ICLR_final/runs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}'
   
-  eval_save_path="/srv/rl2-lab/flash8/mbronars3/legibility/full_training_scan/unet_delta_default_sweep/alpha${alpha}_beta${beta}_gamma${gamma}.hdf5"
+  eval_save_path="/srv/rl2-lab/flash8/mbronars3/legibility/ICLR_final/block_reach/ablations_e125/alpha${alpha}_beta${beta}_gamma${gamma}.hdf5"
 
   # Pipe the program output to the evaluation program
   evaluation_result=$(python /srv/rl2-lab/flash8/mbronars3/ICRA/scripts/evaluate_legibility.py $eval_save_path 8)

@@ -7,9 +7,9 @@ checkpoint:
     format_str: epoch={epoch:04d}-test_mean_score={test_mean_score:.3f}-val_loss={val_loss:.4f}.ckpt
     k: 15
     mode: max
-    monitor_key: val_loss
+    monitor_key: test_mean_score
 dataloader:
-  batch_size: 256
+  batch_size: 64
   num_workers: 4
   persistent_workers: false
   pin_memory: true
@@ -110,7 +110,7 @@ training:
   tqdm_interval_sec: 1.0
   val_every: 1
 val_dataloader:
-  batch_size: 256
+  batch_size: 64
   num_workers: 4
   persistent_workers: false
   pin_memory: true
