@@ -113,12 +113,16 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
         # aggregate obs stats
         obs_stat = array_to_stats(self.replay_buffer['obs'])
 
-
         normalizer['obs'] = normalizer_from_stat(obs_stat)
         return normalizer
 
     def get_all_actions(self) -> torch.Tensor:
         return torch.from_numpy(self.replay_buffer['action'])
+    
+    def get_goal(self, idx: int) -> torch.Tensor:
+        data = self.sampler.sample_sequence(idx)
+        torch_data = dict_apply(data, torch.from_numpy)
+        return torch_data['goal']
     
     def __len__(self):
         return len(self.sampler)
@@ -143,6 +147,11 @@ def _data_to_obs(raw_obs, raw_actions, obs_keys, abs_action, rotation_transforme
         raw_obs[key] for key in obs_keys
     ], axis=-1).astype(np.float32)
 
+    # we define goal state as the final observation from the dataset
+    goal = np.zeros_like(obs)
+    last_obs = obs[-1]
+    goal[:] = last_obs
+
     if abs_action:
         is_dual_arm = False
         if raw_actions.shape[-1] == 14:
@@ -163,6 +172,7 @@ def _data_to_obs(raw_obs, raw_actions, obs_keys, abs_action, rotation_transforme
     
     data = {
         'obs': obs,
+        'goal': goal,
         'action': raw_actions
     }
     return data
