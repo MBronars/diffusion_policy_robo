@@ -24,6 +24,7 @@ class RobomimicLowdimWrapper(gym.Env):
         self.render_camera_name = render_camera_name
         self.seed_state_map = dict()
         self._seed = None
+        self.goal = None
         
         # setup spaces
         low = np.full(env.action_dimension, fill_value=-1)
@@ -93,6 +94,11 @@ class RobomimicLowdimWrapper(gym.Env):
         return self.env.render(mode=mode, 
             height=h, width=w, 
             camera_name=self.render_camera_name)
+    
+    def check_goal(self, obs):
+        if self.goal is None:
+            return False
+        return np.allclose(obs, self.goal)
 
 
 def test():

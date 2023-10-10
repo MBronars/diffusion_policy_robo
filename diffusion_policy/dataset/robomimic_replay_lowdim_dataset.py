@@ -114,15 +114,19 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
         obs_stat = array_to_stats(self.replay_buffer['obs'])
 
         normalizer['obs'] = normalizer_from_stat(obs_stat)
+        normalizer['goal'] = normalizer_from_stat(obs_stat)
         return normalizer
 
     def get_all_actions(self) -> torch.Tensor:
         return torch.from_numpy(self.replay_buffer['action'])
     
-    def get_goal(self, idx: int) -> torch.Tensor:
+    def get_goal_list(self) -> torch.Tensor:
+        idx = np.random.choice(np.where(self.train_mask)[0])
         data = self.sampler.sample_sequence(idx)
         torch_data = dict_apply(data, torch.from_numpy)
-        return torch_data['goal']
+        goal_data = torch_data['goal']
+        null_data = torch.zeros_like(goal_data)
+        return [goal_data, null_data]
     
     def __len__(self):
         return len(self.sampler)

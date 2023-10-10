@@ -52,6 +52,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         self.pred_action_steps_only = pred_action_steps_only
         self.oa_step_convention = oa_step_convention
         self.kwargs = kwargs
+        self.p_uncond = p_uncond
 
         if num_inference_steps is None:
             num_inference_steps = noise_scheduler.config.num_train_timesteps
@@ -101,7 +102,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_list: List[torch.Tensor], guidance_weights: List[Float]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], goal_list: List[torch.Tensor], guidance_weights: List[float]) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         goal_list: list of goal dicts, all must include "goal" key
@@ -115,7 +116,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         assert sum(guidance_weights) == 1.0
         assert self.obs_as_global_cond # only support global conditioning for now
         nobs = self.normalizer['obs'].normalize(obs_dict['obs'])
-        ngoals = [self.normalizer['obs'].normalize(goal_dict['goal']) for goal_dict in goal_list]
+        ngoals = [self.normalizer['goal'].normalize(goal_dict['goal']) for goal_dict in goal_list]
         B, _, Do = nobs.shape
         To = self.n_obs_steps
         assert Do == self.obs_dim
@@ -219,7 +220,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             null_cond = torch.zeros_like(goal_cond)
 
             # jointly train unconditional and conditional models by randomly dropping out goal
-            if random.rand() < self.p_uncond:
+            if random.random() < self.p_uncond:
                 global_cond = torch.cat([obs_cond, null_cond], dim=-1)
             else:
                 global_cond = torch.cat([obs_cond, goal_cond], dim=-1)
