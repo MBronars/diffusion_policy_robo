@@ -9,6 +9,7 @@ import h5py
 import dill
 import math
 import wandb.sdk.data_types.video as wv
+from copy import deepcopy
 from diffusion_policy.gym_util.async_vector_env import AsyncVectorEnv
 # from diffusion_policy.gym_util.sync_vector_env import SyncVectorEnv
 from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
@@ -224,7 +225,14 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
 
         assert isinstance(dataset, RobomimicReplayLowdimDataset)
         
-        goal_list = [dataset.get_goal_list() for _ in range(len(env_init_fn_dills))]
+        goal_list = []
+        start_seed = test_start_seed
+        
+        for i in range(len(env_init_fn_dills)):
+            seed = start_seed + i
+            goal_list.append(dataset.get_goal_list(seed=seed))
+
+        # goal_list = [dataset.get_goal_list() for _ in range(len(env_init_fn_dills))]
         transposed_goals = [list(x) for x in zip(*goal_list)]
         final_goal_list = [torch.stack(x, dim=0) for x in transposed_goals]
         final_goal_list = [goal[:,:n_obs_steps] for goal in final_goal_list]
@@ -270,10 +278,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         target = np.where(reduced_goal[..., 0] > reduced_goal[..., 1], 1, 2)
         condition = (reduced_obs[..., 0] > 0.84) | (reduced_obs[..., 1] > 0.84)
         current = np.where(condition, np.where(reduced_obs[..., 0] > reduced_obs[..., 1], 1, 2), 0)
-        successes = (current == target).astype(int)
+        successes = (current == target).astype(float)
         return successes
 
-    def run(self, policy: BaseLowdimPolicy):
+    def run(self, policy: BaseLowdimPolicy, save_rollout = False):
         device = policy.device
         dtype = policy.dtype
         env = self.env
@@ -286,6 +294,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         # allocate data
         all_video_paths = [None] * n_inits
         all_rewards = [None] * n_inits
+
+        # rollout data
+        trajs = []
 
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
@@ -308,6 +319,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             obs = env.reset()
             past_action = None
             policy.reset()
+
+            # init trajectory
+            traj = dict(actions=[], rewards=[], dones=[], states=[], obs=[], next_obs=[])
 
             # reset guidance list
             guidance_list = self.guidance_list.copy()
@@ -362,15 +376,28 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 if self.abs_action:
                     env_action = self.undo_transform_action(action)
 
-                obs, reward, done, info = env.step(env_action)
+                next_obs, reward, done, info = env.step(env_action)
                 done = np.all(done)
                 past_action = action
 
+                
+
                 # check if goal is reach - target is the first goal in the list
                 successes = self.check_goal(obs, goal_list[0]['goal'])
+                total_successes = [1.0 if total_successes[i] or successes[i] else 0.0 for i in range(len(total_successes))]
+
+
+                if save_rollout:
+                    # collect transition
+                    traj["actions"].append(env_action)
+                    traj["rewards"].append(total_successes)
+                    traj["dones"].append(done)
+                    traj["obs"].append(obs)
+                    traj["next_obs"].append(next_obs)
+
+                obs = deepcopy(next_obs)
 
                 # update successes
-                total_successes = [1 if total_successes[i] or successes[i] else 0 for i in range(len(total_successes))]
 
                 done = done or np.all(total_successes)
 
@@ -387,6 +414,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             # for goal conditioning, we are just doing the rewards based on self computed successes
             #all_rewards[this_global_slice] = env.call('get_attr', 'reward')[this_local_slice]
             all_rewards[this_global_slice] = total_successes
+
+            # collect trajectory
+            if save_rollout:
+                trajs.append(traj)
 
         # log
         max_rewards = collections.defaultdict(list)
@@ -417,6 +448,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             name = prefix+'mean_score'
             value = np.mean(value)
             log_data[name] = value
+
+        if save_rollout:
+            return log_data, trajs
 
         return log_data
 

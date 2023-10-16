@@ -2,6 +2,7 @@ from typing import Dict, List
 import torch
 import numpy as np
 import h5py
+import time
 from tqdm import tqdm
 import copy
 from diffusion_policy.common.pytorch_util import dict_apply
@@ -70,6 +71,7 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
             pad_after=pad_after,
             episode_mask=train_mask)
         
+        self.training_seed = seed
         self.replay_buffer = replay_buffer
         self.sampler = sampler
         self.abs_action = abs_action
@@ -78,17 +80,38 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
         self.pad_before = pad_before
         self.pad_after = pad_after
         self.use_legacy_normalizer = use_legacy_normalizer
+
+        self.get_validation_dataset()
     
     def get_validation_dataset(self):
+        np.random.seed(self.training_seed)
         val_set = copy.copy(self)
+        test_set = copy.copy(self)
+        val_mask = ~self.train_mask
+        val_data = np.where(val_mask)[0]
+        test_data = np.random.choice(val_data, size=int(len(val_data)/3), replace=False)
+        test_mask = np.zeros_like(val_mask)
+        test_mask = test_mask.astype(bool)
+        test_mask[test_data] = True
+        val_mask[test_data] = False
         val_set.sampler = SequenceSampler(
             replay_buffer=self.replay_buffer, 
             sequence_length=self.horizon,
             pad_before=self.pad_before, 
             pad_after=self.pad_after,
-            episode_mask=~self.train_mask
+            episode_mask=val_mask
             )
-        val_set.train_mask = ~self.train_mask
+        test_set.sampler = SequenceSampler(
+            replay_buffer=self.replay_buffer,
+            sequence_length=self.horizon,
+            pad_before=self.pad_before,
+            pad_after=self.pad_after,
+            episode_mask=test_mask
+            )
+        val_set.train_mask = val_mask
+        test_set.train_mask = test_mask
+        self.val_mask = val_mask
+        self.test_mask = test_mask
         return val_set
 
     def get_normalizer(self, **kwargs) -> LinearNormalizer:
@@ -120,8 +143,9 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
     def get_all_actions(self) -> torch.Tensor:
         return torch.from_numpy(self.replay_buffer['action'])
     
-    def get_goal_list(self) -> torch.Tensor:
-        idx = np.random.choice(np.where(self.train_mask)[0])
+    def get_goal_list(self, seed) -> torch.Tensor:
+        np.random.seed(seed)
+        idx = np.random.choice(np.where(self.val_mask)[0])
         data = self.sampler.sample_sequence(idx)
         torch_data = dict_apply(data, torch.from_numpy)
         goal_data = torch_data['goal']

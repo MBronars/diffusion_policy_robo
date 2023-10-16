@@ -16,7 +16,10 @@ import torch
 import dill
 import wandb
 import json
+import h5py
+import numpy as np
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
+from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 
 @click.command()
 @click.option('-c', '--checkpoint', required=True)
@@ -43,13 +46,27 @@ def main(checkpoint, output_dir, device):
     device = torch.device(device)
     policy.to(device)
     policy.eval()
+
+    dataset: BaseLowdimDataset
+    dataset = hydra.utils.instantiate(cfg.task.dataset)
     
     # run eval
     env_runner = hydra.utils.instantiate(
         cfg.task.env_runner,
-        output_dir=output_dir)
-    runner_log = env_runner.run(policy)
-    
+        output_dir=output_dir,
+        dataset=dataset)
+
+    runner_log, trajs = env_runner.run(policy, save_rollout = True)
+
+    data_writer = h5py.File(os.path.join(output_dir, 'trajs.hdf5'), "w")
+    data_grp = data_writer.create_group("data")
+    for i in range(len(trajs)):
+        ep_data_grp = data_grp.create_group("demo_{}".format(i))
+        ep_data_grp.create_dataset("actions", data=np.array(trajs[i]["actions"]))
+        ep_data_grp.create_dataset("rewards", data=np.array(trajs[i]["rewards"]))
+        ep_data_grp.create_dataset("dones", data=np.array(trajs[i]["dones"]))
+        ep_data_grp.create_dataset("obs", data=np.array(trajs[i]["obs"]))
+        ep_data_grp.create_dataset("next_obs", data=np.array(trajs[i]["next_obs"]))
     # dump log to json
     json_log = dict()
     for key, value in runner_log.items():
