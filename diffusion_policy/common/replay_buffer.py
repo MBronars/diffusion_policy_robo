@@ -450,11 +450,12 @@ class ReplayBuffer:
         curr_len = self.n_steps
         episode_length = None
         for key, value in data.items():
-            assert(len(value.shape) >= 1)
-            if episode_length is None:
-                episode_length = len(value)
-            else:
-                assert(episode_length == len(value))
+            if key != "goal":
+                assert(len(value.shape) >= 1)
+                if episode_length is None:
+                    episode_length = len(value)
+                else:
+                    assert(episode_length == len(value))
         new_len = curr_len + episode_length
 
         for key, value in data.items():

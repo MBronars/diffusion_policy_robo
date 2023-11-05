@@ -14,30 +14,33 @@ from omegaconf import OmegaConf
 import pathlib
 from torch.utils.data import DataLoader
 import copy
-import numpy as np
 import random
 import wandb
 import tqdm
+import numpy as np
 import shutil
 
 from diffusion_policy.common.pytorch_util import dict_apply, optimizer_to
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
-from diffusion_policy.policy.diffusion_unet_lowdim_policy import DiffusionUnetLowdimPolicy
+from diffusion_policy.policy.bet_lowdim_policy import BETLowdimPolicy
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
 from diffusion_policy.common.checkpoint_util import TopKCheckpointManager
+from diffusion_policy.model.common.normalizer import (
+    LinearNormalizer, 
+    SingleFieldLinearNormalizer
+)
 from diffusion_policy.common.json_logger import JsonLogger
-from diffusion_policy.model.common.lr_scheduler import get_scheduler
 from diffusers.training_utils import EMAModel
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 # %%
-class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
+class TrainBETLowdimWorkspace(BaseWorkspace):
     include_keys = ['global_step', 'epoch']
 
-    def __init__(self, cfg: OmegaConf, output_dir=None):
-        super().__init__(cfg, output_dir=output_dir)
+    def __init__(self, cfg: OmegaConf):
+        super().__init__(cfg)
 
         # set seed
         seed = cfg.training.seed
@@ -46,22 +49,19 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
         random.seed(seed)
 
         # configure model
-        self.model: DiffusionUnetLowdimPolicy
-        self.model = hydra.utils.instantiate(cfg.policy)
-
-        self.ema_model: DiffusionUnetLowdimPolicy = None
-        if cfg.training.use_ema:
-            self.ema_model = copy.deepcopy(self.model)
+        self.policy: BETLowdimPolicy
+        self.policy = hydra.utils.instantiate(cfg.policy)
 
         # configure training state
-        self.optimizer = hydra.utils.instantiate(
-            cfg.optimizer, params=self.model.parameters())
+        self.optimizer = self.policy.get_optimizer(**cfg.optimizer)
 
         self.global_step = 0
         self.epoch = 0
 
+
     def run(self):
         cfg = copy.deepcopy(self.cfg)
+        OmegaConf.resolve(cfg)
 
         # resume training
         if cfg.training.resume:
@@ -75,35 +75,27 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
         dataset = hydra.utils.instantiate(cfg.task.dataset)
         assert isinstance(dataset, BaseLowdimDataset)
         train_dataloader = DataLoader(dataset, **cfg.dataloader)
-        normalizer = dataset.get_normalizer()
 
         # configure validation dataset
         val_dataset = dataset.get_validation_dataset()
         val_dataloader = DataLoader(val_dataset, **cfg.val_dataloader)
 
-        self.model.set_normalizer(normalizer)
-        if cfg.training.use_ema:
-            self.ema_model.set_normalizer(normalizer)
+        # set normalizer
+        normalizer = None
+        if cfg.training.enable_normalizer:
+            normalizer = dataset.get_normalizer()
+        else:
+            normalizer = LinearNormalizer()
+            normalizer['action'] = SingleFieldLinearNormalizer.create_identity()
+            normalizer['obs'] = SingleFieldLinearNormalizer.create_identity()
+            normalizer['goal'] = SingleFieldLinearNormalizer.create_identity()
 
-        # configure lr scheduler
-        lr_scheduler = get_scheduler(
-            cfg.training.lr_scheduler,
-            optimizer=self.optimizer,
-            num_warmup_steps=cfg.training.lr_warmup_steps,
-            num_training_steps=(
-                len(train_dataloader) * cfg.training.num_epochs) \
-                    // cfg.training.gradient_accumulate_every,
-            # pytorch assumes stepping LRScheduler every epoch
-            # however huggingface diffusers steps it every batch
-            last_epoch=self.global_step-1
-        )
+        self.policy.set_normalizer(normalizer)
 
-        # configure ema
-        ema: EMAModel = None
-        if cfg.training.use_ema:
-            ema = hydra.utils.instantiate(
-                cfg.ema,
-                model=self.ema_model)
+        # fit action_ae (K-Means)
+        self.policy.fit_action_ae(
+                normalizer['action'].normalize(
+                    dataset.get_all_actions()))
 
         # configure env runner
         env_runner: BaseLowdimRunner
@@ -133,11 +125,9 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
 
         # device transfer
         device = torch.device(cfg.training.device)
-        self.model.to(device)
-        if self.ema_model is not None:
-            self.ema_model.to(device)
+        self.policy.to(device)
         optimizer_to(self.optimizer, device)
-
+        
         # save batch for sampling
         train_sampling_batch = None
 
@@ -166,34 +156,19 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                             train_sampling_batch = batch
 
                         # compute loss
-                        raw_loss = self.model.compute_loss(batch)
+                        raw_loss, loss_components = self.policy.compute_loss(batch)
                         loss = raw_loss / cfg.training.gradient_accumulate_every
                         loss.backward()
+
+                        # clip grad norm
+                        torch.nn.utils.clip_grad_norm_(
+                            self.policy.state_prior.parameters(), cfg.training.grad_norm_clip
+                        )
 
                         # step optimizer
                         if self.global_step % cfg.training.gradient_accumulate_every == 0:
                             self.optimizer.step()
-                            self.optimizer.zero_grad()
-                            lr_scheduler.step()
-                        
-                        # update ema
-                        if cfg.training.use_ema:
-                            ema.step(self.model)
-
-                        # # compute loss
-                        # raw_uncond_loss = self.model.compute_loss(batch, uncond = True)
-                        # uncond_loss = raw_uncond_loss / cfg.training.gradient_accumulate_every
-                        # uncond_loss.backward()
-
-                        # # step optimizer
-                        # if self.global_step % cfg.training.gradient_accumulate_every == 0:
-                        #     self.optimizer.step()
-                        #     self.optimizer.zero_grad()
-                        #     lr_scheduler.step()
-                        
-                        # # update ema
-                        # if cfg.training.use_ema:
-                        #     ema.step(self.model)
+                            self.optimizer.zero_grad(set_to_none=True)
 
                         # logging
                         raw_loss_cpu = raw_loss.item()
@@ -203,7 +178,8 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                             'train_loss': raw_loss_cpu,
                             'global_step': self.global_step,
                             'epoch': self.epoch,
-                            'lr': lr_scheduler.get_last_lr()[0]
+                            'train_loss_offset': loss_components['offset'].item(),
+                            'train_loss_class': loss_components['class'].item()
                         }
 
                         is_last_batch = (batch_idx == (len(train_dataloader)-1))
@@ -216,24 +192,21 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                         if (cfg.training.max_train_steps is not None) \
                             and batch_idx >= (cfg.training.max_train_steps-1):
                             break
-                
+
                 # at the end of each epoch
                 # replace train_loss with epoch average
                 train_loss = np.mean(train_losses)
                 step_log['train_loss'] = train_loss
 
                 # ========= eval for this epoch ==========
-                policy = self.model
-                if cfg.training.use_ema:
-                    policy = self.ema_model
-                policy.eval()
+                self.policy.eval()
 
                 # run rollout
                 if (self.epoch % cfg.training.rollout_every) == 0:
-                    runner_log = env_runner.run(policy)
+                    runner_log = env_runner.run(self.policy)
                     # log all
                     step_log.update(runner_log)
-
+                
                 # run validation
                 if (self.epoch % cfg.training.val_every) == 0:
                     with torch.no_grad():
@@ -242,8 +215,8 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                                 leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
                             for batch_idx, batch in enumerate(tepoch):
                                 batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
-                                loss = self.model.compute_loss(batch)
-                                val_losses.append(loss)
+                                raw_loss, loss_components = self.policy.compute_loss(batch)
+                                val_losses.append(raw_loss)
                                 if (cfg.training.max_val_steps is not None) \
                                     and batch_idx >= (cfg.training.max_val_steps-1):
                                     break
@@ -252,19 +225,15 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                             # log epoch average validation loss
                             step_log['val_loss'] = val_loss
 
-                # run diffusion sampling on a training batch
+                # run sample on a training batch
                 # if (self.epoch % cfg.training.sample_every) == 0:
                 #     with torch.no_grad():
                 #         # sample trajectory from training set, and evaluate difference
                 #         batch = train_sampling_batch
                 #         obs_dict = {'obs': batch['obs']}
                 #         gt_action = batch['action']
-
-                #         # set goal 
-                #         goal_dict = {'goal': batch['goal']}
-                #         goal_list = dataset.get_goal_list(goal_dict)
                         
-                #         result = policy.predict_action(obs_dict)
+                #         result = self.policy.predict_action(obs_dict)
                 #         if cfg.pred_action_steps_only:
                 #             pred_action = result['action']
                 #             start = cfg.n_obs_steps - 1
@@ -282,7 +251,7 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                 #         del result
                 #         del pred_action
                 #         del mse
-                
+
                 # checkpoint
                 if (self.epoch % cfg.training.checkpoint_every) == 0:
                     # checkpointing
@@ -305,7 +274,7 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
                     if topk_ckpt_path is not None:
                         self.save_checkpoint(path=topk_ckpt_path)
                 # ========= eval end for this epoch ==========
-                policy.train()
+                self.policy.train()
 
                 # end of epoch
                 # log of last step is combined with validation and rollout
@@ -319,7 +288,7 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
     config_path=str(pathlib.Path(__file__).parent.parent.joinpath("config")), 
     config_name=pathlib.Path(__file__).stem)
 def main(cfg):
-    workspace = TrainDiffusionUnetLowdimWorkspace(cfg)
+    workspace = TrainBETLowdimWorkspace(cfg)
     workspace.run()
 
 if __name__ == "__main__":

@@ -1,15 +1,38 @@
 import os
 import random
 from collections import OrderedDict
-from typing import List, Optional
-
+from typing import List, Optional, Sequence
 import einops
 import numpy as np
 import torch
 import torch.nn as nn
+import pynvml
 
 from torch.utils.data import random_split
 import wandb
+import logging
+
+
+pynvml.nvmlInit()
+
+# Modified from https://stackoverflow.com/questions/49201236/check-the-total-number-of-parameters-in-a-pytorch-model
+# def count_parameters(model):
+#     table = PrettyTable(["Modules", "Parameters"])
+#     total_params = 0
+#     for name, parameter in model.named_parameters():
+#         if not parameter.requires_grad:
+#             continue
+#         params = parameter.numel()
+#         table.add_row([name, params])
+#         total_params += params
+#     return total_params, table
+
+
+def get_split_idx(l, seed, train_fraction=0.95):
+    rng = torch.Generator().manual_seed(seed)
+    idx = torch.randperm(l, generator=rng).tolist()
+    l_train = int(l * train_fraction)
+    return idx[:l_train], idx[l_train:]
 
 
 def mlp(input_dim, hidden_dim, output_dim, hidden_depth, output_mod=None):
@@ -63,6 +86,27 @@ def set_seed_everywhere(seed):
     random.seed(seed)
 
 
+def batch_indexing(input, idx):
+    """
+    Given an input with shape (*batch_shape, k, *value_shape),
+    and an index with shape (*batch_shape) with values in [0, k),
+    index the input on the k dimension.
+    Returns: (*batch_shape, *value_shape)
+    """
+    batch_shape = idx.shape
+    dim = len(idx.shape)
+    value_shape = input.shape[dim + 1 :]
+    N = batch_shape.numel()
+    assert input.shape[:dim] == batch_shape, "Input batch shape must match index shape"
+    assert len(value_shape) > 0, "No values left after indexing"
+
+    # flatten the batch shape
+    input_flat = input.reshape(N, *input.shape[dim:])
+    idx_flat = idx.reshape(N)
+    result = input_flat[np.arange(N), idx_flat]
+    return result.reshape(*batch_shape, *value_shape)
+
+
 def shuffle_along_axis(a, axis):
     idx = np.random.rand(*a.shape).argsort(axis=axis)
     return np.take_along_axis(a, idx, axis=axis)
@@ -70,6 +114,18 @@ def shuffle_along_axis(a, axis):
 
 def transpose_batch_timestep(*args):
     return (einops.rearrange(arg, "b t ... -> t b ...") for arg in args)
+
+
+def cuda_free_mem(gpu_index: int) -> float:
+    handle = pynvml.nvmlDeviceGetHandleByIndex(int(gpu_index))
+    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    return mem_info.free
+
+
+def cuda_idxmax_free_mem() -> int:
+    gpu_count = pynvml.nvmlDeviceGetCount()
+    free_mems = [cuda_free_mem(i) for i in range(gpu_count)]
+    return int(np.argmax(free_mems))
 
 
 class TrainWithLogger:

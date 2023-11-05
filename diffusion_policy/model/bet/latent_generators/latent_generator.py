@@ -4,7 +4,6 @@ from typing import Tuple, Optional
 
 import diffusion_policy.model.bet.utils as utils
 
-
 class AbstractLatentGenerator(abc.ABC, utils.SaveModule):
     """
     Abstract class for a generative model that can generate latents given observation representations.

@@ -3,6 +3,8 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+import math
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
@@ -87,7 +89,8 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             model_output = 0
             
             for i in range(len(guidance_weights)):
-                model_output += guidance_weights[i] * model(trajectory, t,local_cond=local_cond, global_cond=global_cond[i])
+                prediction = guidance_weights[i] * model(trajectory, t,local_cond=local_cond, global_cond=global_cond[i])
+                model_output += prediction
 
             # 3. compute previous image: x_t -> x_t-1
             trajectory = scheduler.step(
@@ -113,7 +116,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         assert 'obs' in obs_dict
         assert 'past_action' not in obs_dict # not implemented yet
         assert len(goal_list) == len(guidance_weights)
-        assert sum(guidance_weights) == 1.0
+        assert math.isclose(sum(guidance_weights), 1.0)
         assert self.obs_as_global_cond # only support global conditioning for now
         nobs = self.normalizer['obs'].normalize(obs_dict['obs'])
         ngoals = [self.normalizer['goal'].normalize(goal_dict['goal']) for goal_dict in goal_list]
@@ -195,7 +198,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch, uncond = False):
         # normalize input
         assert 'valid_mask' not in batch
         assert self.obs_as_global_cond
@@ -219,7 +222,29 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
                 goal.shape[0], -1)
             null_cond = torch.zeros_like(goal_cond)
 
+            # starting_obs = np.array([ 1.29999995e-01, -1.99999996e-02,  8.32000017e-01,  0.00000000e+00,
+            #                         0.00000000e+00,  7.06825197e-01,  7.07388282e-01,  2.09999993e-01,
+            #                         1.99999996e-02,  8.32000017e-01,  0.00000000e+00,  0.00000000e+00,
+            #                         7.06825197e-01,  7.07388282e-01,  2.32768297e-01, -1.99999996e-02,
+            #                         -1.79043874e-01,  3.12768281e-01,  1.99999996e-02, -1.79043874e-01,
+            #                         7.99999982e-02,  3.99999991e-02,  0.00000000e+00, -1.02768295e-01,
+            #                         1.34614546e-18,  1.01104391e+00,  9.97976601e-01,  2.45922565e-04,
+            #                         6.35816976e-02,  1.56678761e-05,  2.08330005e-02, -2.08330005e-02])
+
+            # target_obs = obs[:, 0].cpu().numpy()
+
+            # # from IPython import embed; embed()
+
+            # # check if obs_cond is the same as starting_obs
+            # for o in target_obs:
+            #     if np.testing.assert_almost_equal(actual = o, desired = starting_obs, decimal = 4):
+            #         print("obs_cond is the same as starting_obs")
+            
+            # starting_obs = torch.from_numpy(starting_obs).unsqueeze(0).unsqueeze(0).repeat(obs.to(obs.device))
+
             # jointly train unconditional and conditional models by randomly dropping out goal
+            
+            # if uncond:
             if random.random() < self.p_uncond:
                 global_cond = torch.cat([obs_cond, null_cond], dim=-1)
             else:

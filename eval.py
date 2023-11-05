@@ -20,6 +20,7 @@ import h5py
 import numpy as np
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
+from evaluate_legibility import get_legibility
 
 @click.command()
 @click.option('-c', '--checkpoint', required=True)
@@ -33,6 +34,10 @@ def main(checkpoint, output_dir, device):
     # load checkpoint
     payload = torch.load(open(checkpoint, 'rb'), pickle_module=dill)
     cfg = payload['cfg']
+    cfg.task.env_runner.alpha = 0.75
+    cfg.task.env_runner.gamma = 0.9
+    cfg.task.env_runner.guidance_weight = 1.5
+    # cfg.task.env_runner.guidance_list = [1, 0]
     cls = hydra.utils.get_class(cfg._target_)
     workspace = cls(cfg, output_dir=output_dir)
     workspace: BaseWorkspace
@@ -42,6 +47,8 @@ def main(checkpoint, output_dir, device):
     policy = workspace.model
     if cfg.training.use_ema:
         policy = workspace.ema_model
+
+    # policy = workspace.policy
     
     device = torch.device(device)
     policy.to(device)
@@ -76,6 +83,8 @@ def main(checkpoint, output_dir, device):
             json_log[key] = value
     out_path = os.path.join(output_dir, 'eval_log.json')
     json.dump(json_log, open(out_path, 'w'), indent=2, sort_keys=True)
+
+    get_legibility(os.path.join(output_dir, 'trajs.hdf5'), 8)
 
 if __name__ == '__main__':
     main()

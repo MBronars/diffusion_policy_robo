@@ -5,6 +5,7 @@ import h5py
 import time
 from tqdm import tqdm
 import copy
+import random
 from diffusion_policy.common.pytorch_util import dict_apply
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset, LinearNormalizer
 from diffusion_policy.model.common.normalizer import LinearNormalizer, SingleFieldLinearNormalizer
@@ -44,6 +45,10 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
         replay_buffer = ReplayBuffer.create_empty_numpy()
         with h5py.File(dataset_path) as file:
             demos = file['data']
+            # red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/red.npy")
+            # green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/green.npy")
+            red = None
+            green = None
             for i in tqdm(range(len(demos)), desc="Loading hdf5 to ReplayBuffer"):
                 demo = demos[f'demo_{i}']
                 episode = _data_to_obs(
@@ -51,7 +56,17 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
                     raw_actions=demo['actions'][:].astype(np.float32),
                     obs_keys=obs_keys,
                     abs_action=abs_action,
-                    rotation_transformer=rotation_transformer)
+                    rotation_transformer=rotation_transformer,
+                    horizon=horizon,
+                    red = red,
+                    green = green)
+                goal_data = episode['goal']
+                if goal_data[-1, 2] > goal_data[-1, 9]:
+                    if red is None:
+                        red = goal_data
+                else:
+                    if green is None:
+                        green = goal_data
                 replay_buffer.add_episode(episode)
 
         val_mask = get_val_mask(
@@ -81,38 +96,62 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
         self.pad_after = pad_after
         self.use_legacy_normalizer = use_legacy_normalizer
 
-        self.get_validation_dataset()
-    
-    def get_validation_dataset(self):
-        np.random.seed(self.training_seed)
-        val_set = copy.copy(self)
-        test_set = copy.copy(self)
         val_mask = ~self.train_mask
-        val_data = np.where(val_mask)[0]
-        test_data = np.random.choice(val_data, size=int(len(val_data)/3), replace=False)
-        test_mask = np.zeros_like(val_mask)
-        test_mask = test_mask.astype(bool)
-        test_mask[test_data] = True
-        val_mask[test_data] = False
+        val_idx = np.where(val_mask)[0]
+        rng = np.random.default_rng(seed=seed)
+        test_idxs = rng.choice(val_idx, size=int(len(val_idx)/3), replace=False)
+        test_mask = np.zeros_like(self.train_mask)
+        test_mask[test_idxs] = True
+        val_mask[test_idxs] = False
+        self.val_mask = val_mask
+        self.test_mask = test_mask
+        
+
+    def get_validation_dataset(self):
+        val_set = copy.copy(self)
         val_set.sampler = SequenceSampler(
             replay_buffer=self.replay_buffer, 
             sequence_length=self.horizon,
             pad_before=self.pad_before, 
             pad_after=self.pad_after,
-            episode_mask=val_mask
+            episode_mask=self.val_mask
             )
-        test_set.sampler = SequenceSampler(
-            replay_buffer=self.replay_buffer,
-            sequence_length=self.horizon,
-            pad_before=self.pad_before,
-            pad_after=self.pad_after,
-            episode_mask=test_mask
-            )
-        val_set.train_mask = val_mask
-        test_set.train_mask = test_mask
-        self.val_mask = val_mask
-        self.test_mask = test_mask
+        # val_set.train_mask = ~self.train_mask
         return val_set
+
+    #     self.get_validation_dataset()
+    
+    # def get_validation_dataset(self):
+    #     val_set = copy.copy(self)
+    #     test_set = copy.copy(self)
+    #     val_mask = ~self.train_mask
+    #     val_data = np.where(val_mask)[0]
+    #     rng = np.random.default_rng(seed=seed)
+    #     val_idxs = rng.choice(n_episodes, size=n_val, replace=False)
+    #     test_data = np.random.choice(val_data, size=int(len(val_data)/3), replace=False)
+    #     test_mask = np.zeros_like(val_mask)
+    #     test_mask = test_mask.astype(bool)
+    #     test_mask[test_data] = True
+    #     val_mask[test_data] = False
+    #     val_set.sampler = SequenceSampler(
+    #         replay_buffer=self.replay_buffer, 
+    #         sequence_length=self.horizon,
+    #         pad_before=self.pad_before, 
+    #         pad_after=self.pad_after,
+    #         episode_mask=val_mask
+    #         )
+    #     test_set.sampler = SequenceSampler(
+    #         replay_buffer=self.replay_buffer,
+    #         sequence_length=self.horizon,
+    #         pad_before=self.pad_before,
+    #         pad_after=self.pad_after,
+    #         episode_mask=test_mask
+    #         )
+    #     val_set.train_mask = val_mask
+    #     test_set.train_mask = test_mask
+    #     self.val_mask = val_mask
+    #     self.test_mask = test_mask
+    #     return val_set
 
     def get_normalizer(self, **kwargs) -> LinearNormalizer:
         normalizer = LinearNormalizer()
@@ -143,14 +182,39 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
     def get_all_actions(self) -> torch.Tensor:
         return torch.from_numpy(self.replay_buffer['action'])
     
-    def get_goal_list(self, seed) -> torch.Tensor:
-        np.random.seed(seed)
-        idx = np.random.choice(np.where(self.val_mask)[0])
-        data = self.sampler.sample_sequence(idx)
-        torch_data = dict_apply(data, torch.from_numpy)
-        goal_data = torch_data['goal']
+    def get_goal_list(self, val_set, rng) -> torch.Tensor:
+        red = None
+        green = None
+        while red is None or green is None:
+            val_len = val_set.sampler.__len__()
+            val_idx = rng.choice(range(val_len), size=1, replace=False)[0]
+            data = val_set.sampler.sample_sequence(val_idx)
+            torch_data = dict_apply(data, torch.from_numpy)
+            goal_data = torch_data['goal']
+            if goal_data[-1, 2] > goal_data[-1, 9]:
+                if red is None:
+                    red = goal_data
+            else:
+                if green is None:
+                    green = goal_data
+
+
         null_data = torch.zeros_like(goal_data)
-        return [goal_data, null_data]
+
+        # red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/red.npy")
+        # green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/green.npy")
+        # red = torch.from_numpy(red)
+        # green = torch.from_numpy(green)
+        # # broadcast green from shape ([32]) to ([16, 32])
+        # green = green.unsqueeze(0).repeat(16, 1)
+        # red = red.unsqueeze(0).repeat(16, 1)
+        # null_data = torch.zeros_like(red)
+
+        # # from IPython import embed; embed()
+
+        if rng.random() < 0.5:
+            return [red, green, null_data]
+        return [green, red, null_data]
     
     def __len__(self):
         return len(self.sampler)
@@ -170,15 +234,29 @@ def normalizer_from_stat(stat):
         input_stats_dict=stat
     )
     
-def _data_to_obs(raw_obs, raw_actions, obs_keys, abs_action, rotation_transformer):
+def _data_to_obs(raw_obs, raw_actions, obs_keys, abs_action, rotation_transformer, horizon, red, green):
     obs = np.concatenate([
-        raw_obs[key] for key in obs_keys
-    ], axis=-1).astype(np.float32)
+        raw_obs[key] if key != 'object' else raw_obs[key][:, :20] for key in obs_keys
+        ], axis=-1).astype(np.float32)
+    # syntax for in line if else
+    # [on_true] if [expression] else [on_false]
 
     # we define goal state as the final observation from the dataset
-    goal = np.zeros_like(obs)
+    # goal = np.zeros_like(obs)
     last_obs = obs[-1]
-    goal[:] = last_obs
+    goal = obs[-horizon:]
+
+    if last_obs[2] > last_obs[9]:
+        if red is not None:
+            goal = red
+    else:
+        if green is not None:
+            goal = green
+    
+
+    # goal[:] = last_obs
+
+    
 
     if abs_action:
         is_dual_arm = False

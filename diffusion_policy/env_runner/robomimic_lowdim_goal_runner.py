@@ -56,8 +56,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             dataset_path,
             obs_keys,
             dataset,
-            guidance_list,
-            decay,
+            guidance_weight,
+            alpha,
+            gamma,
             n_train=10,
             n_train_vis=3,
             train_start_idx=0,
@@ -226,16 +227,20 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         assert isinstance(dataset, RobomimicReplayLowdimDataset)
         
         goal_list = []
-        start_seed = test_start_seed
+        rn_gen = np.random.default_rng(seed=test_start_seed)
+        val_dataset = dataset.get_validation_dataset()
+        
         
         for i in range(len(env_init_fn_dills)):
-            seed = start_seed + i
-            goal_list.append(dataset.get_goal_list(seed=seed))
+            # seed = start_seed + i
+            goal_list.append(dataset.get_goal_list(val_set = val_dataset, rng=rn_gen))
+
+        
 
         # goal_list = [dataset.get_goal_list() for _ in range(len(env_init_fn_dills))]
         transposed_goals = [list(x) for x in zip(*goal_list)]
         final_goal_list = [torch.stack(x, dim=0) for x in transposed_goals]
-        final_goal_list = [goal[:,:n_obs_steps] for goal in final_goal_list]
+        final_goal_list = [goal[:,-n_obs_steps:] for goal in final_goal_list]
         
         self.goal_list = final_goal_list
         self.env_meta = env_meta
@@ -256,8 +261,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         self.rotation_transformer = rotation_transformer
         self.abs_action = abs_action
         self.tqdm_interval_sec = tqdm_interval_sec
-        self.guidance_list = guidance_list
-        self.decay = decay
+        # self.guidance_list = guidance_list
+        self.guidance_weight = guidance_weight
+        self.alpha = alpha
+        self.gamma = gamma
 
     def decay_weights(self, guidance_list):
         """Decay the weights of the guidance list, first weight approaches 1, rest approach 0"""
@@ -324,7 +331,8 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             traj = dict(actions=[], rewards=[], dones=[], states=[], obs=[], next_obs=[])
 
             # reset guidance list
-            guidance_list = self.guidance_list.copy()
+            # guidance_list = self.guidance_list.copy()
+            guidance_weight = self.guidance_weight
 
             # set successes to false
             total_successes = [0] * this_n_active_envs
@@ -340,6 +348,10 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
 
             done = False
             while not done:
+
+                small_list = [-self.alpha * guidance_weight, - (1 - self.alpha) * guidance_weight]
+                guidance_list = [1 - sum(small_list), small_list[0], small_list[1]]
+                
                 # create obs dict
                 np_obs_dict = {
                     # handle n_latency_steps by discarding the last n_latency_steps
@@ -358,7 +370,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 # run policy
                 # policy is dependant on a goal list and guidance weights
                 with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict, goal_list = goal_list, guidance_weights = self.guidance_list)
+                    action_dict = policy.predict_action(obs_dict, goal_list = goal_list, guidance_weights = guidance_list)
 
                 # device_transfer
                 np_action_dict = dict_apply(action_dict,
@@ -402,7 +414,8 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 done = done or np.all(total_successes)
 
                 # decay guidance weights
-                guidance_list = self.decay_weights(guidance_list)
+                # guidance_list = self.decay_weights(guidance_list)
+                guidance_weight = guidance_weight * self.gamma
 
                 # update pbar
                 pbar.update(action.shape[1])

@@ -40,9 +40,15 @@ def create_indices(
                 assert(start_offset >= 0)
                 assert(end_offset >= 0)
                 assert (sample_end_idx - sample_start_idx) == (buffer_end_idx - buffer_start_idx)
+
+            # goal conditioned things
+            goal_start_idx = end_idx - sequence_length
+            goal_end_idx = end_idx
+
             indices.append([
                 buffer_start_idx, buffer_end_idx, 
-                sample_start_idx, sample_end_idx])
+                sample_start_idx, sample_end_idx, 
+                goal_start_idx, goal_end_idx])
     indices = np.array(indices)
     return indices
 
@@ -119,11 +125,14 @@ class SequenceSampler:
         return len(self.indices)
         
     def sample_sequence(self, idx):
-        buffer_start_idx, buffer_end_idx, sample_start_idx, sample_end_idx \
+        buffer_start_idx, buffer_end_idx, sample_start_idx, sample_end_idx, goal_start_idx, goal_end_idx \
             = self.indices[idx]
         result = dict()
         for key in self.keys:
             input_arr = self.replay_buffer[key]
+            if key == 'goal':
+                result[key] = input_arr[goal_start_idx:goal_end_idx]
+                continue
             # performance optimization, avoid small allocation if possible
             if key not in self.key_first_k:
                 sample = input_arr[buffer_start_idx:buffer_end_idx]
