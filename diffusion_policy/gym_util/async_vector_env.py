@@ -580,6 +580,10 @@ def _worker(index, env_fn, pipe, parent_pipe, shared_memory, error_queue):
             elif command == "close":
                 pipe.send((None, True))
                 break
+            # elif command == "get_state":
+            #     pipe.send((env.get_state(), True))
+            # elif command == "get_env_args":
+            #     pipe.send((env.get_env_args(), True))
             elif command == "_call":
                 name, args, kwargs = data
                 if name in ["reset", "step", "seed", "close"]:

@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
 import numpy as np
 import gym
+import json
 from gym.spaces import Box
 from robomimic.envs.env_robosuite import EnvRobosuite
 
@@ -51,6 +52,12 @@ class RobomimicLowdimWrapper(gym.Env):
             raw_obs[key] for key in self.obs_keys
         ], axis=0)
         return obs
+    
+    def get_state(self):
+        return self.env.get_state()
+    
+    def get_env_args(self):
+        return json.dumps(self.env.serialize(), indent = 4)
 
     def seed(self, seed=None):
         np.random.seed(seed=seed)

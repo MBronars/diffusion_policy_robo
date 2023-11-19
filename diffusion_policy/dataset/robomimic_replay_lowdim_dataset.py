@@ -60,15 +60,18 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
                     horizon=horizon,
                     red = red,
                     green = green)
-                goal_data = episode['goal']
-                if goal_data[-1, 2] > goal_data[-1, 9]:
-                    if red is None:
-                        red = goal_data
-                else:
-                    if green is None:
-                        green = goal_data
+                # goal_data = episode['goal']
+                # if goal_data[-1, 2] > goal_data[-1, 9]:
+                #     if red is None:
+                #         red = goal_data[-1]
+                # else:
+                #     if green is None:
+                #         green = goal_data[-1]
+                
                 replay_buffer.add_episode(episode)
 
+        # np.save("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/red.npy", red)
+        # np.save("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/green.npy", green)
         val_mask = get_val_mask(
             n_episodes=replay_buffer.n_episodes, 
             val_ratio=val_ratio,
@@ -185,36 +188,39 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
     def get_goal_list(self, val_set, rng) -> torch.Tensor:
         red = None
         green = None
-        while red is None or green is None:
-            val_len = val_set.sampler.__len__()
-            val_idx = rng.choice(range(val_len), size=1, replace=False)[0]
-            data = val_set.sampler.sample_sequence(val_idx)
-            torch_data = dict_apply(data, torch.from_numpy)
-            goal_data = torch_data['goal']
-            if goal_data[-1, 2] > goal_data[-1, 9]:
-                if red is None:
-                    red = goal_data
-            else:
-                if green is None:
-                    green = goal_data
-
-
-        null_data = torch.zeros_like(goal_data)
-
+        # while red is None or green is None:
+        #     val_len = val_set.sampler.__len__()
+        #     val_idx = rng.choice(range(val_len), size=1, replace=False)[0]
+        #     data = val_set.sampler.sample_sequence(val_idx)
+        #     torch_data = dict_apply(data, torch.from_numpy)
+        #     goal_data = torch_data['goal']
+        #     if goal_data[-1, 2] > goal_data[-1, 9]:
+        #         if red is None:
+        #             red = goal_data
+        #     else:
+        #         if green is None:
+        #             green = goal_data
+        
         # red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/red.npy")
         # green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/green.npy")
-        # red = torch.from_numpy(red)
-        # green = torch.from_numpy(green)
-        # # broadcast green from shape ([32]) to ([16, 32])
-        # green = green.unsqueeze(0).repeat(16, 1)
-        # red = red.unsqueeze(0).repeat(16, 1)
+
+        
+
+
         # null_data = torch.zeros_like(red)
 
-        # # from IPython import embed; embed()
+        red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/new_red.npy")
+        green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/new_green.npy")
+        red = torch.from_numpy(red)
+        green = torch.from_numpy(green)
+        # broadcast green from shape ([32]) to ([16, 32])
+        green = green.unsqueeze(0).repeat(16, 1)
+        red = red.unsqueeze(0).repeat(16, 1)
+        null_data = torch.zeros_like(red)
 
         if rng.random() < 0.5:
-            return [red, green, null_data]
-        return [green, red, null_data]
+            return ([red, green, null_data], True)
+        return ([green, red, null_data], False)
     
     def __len__(self):
         return len(self.sampler)
@@ -242,19 +248,18 @@ def _data_to_obs(raw_obs, raw_actions, obs_keys, abs_action, rotation_transforme
     # [on_true] if [expression] else [on_false]
 
     # we define goal state as the final observation from the dataset
-    # goal = np.zeros_like(obs)
+    goal = np.zeros_like(obs)
     last_obs = obs[-1]
-    goal = obs[-horizon:]
 
-    if last_obs[2] > last_obs[9]:
-        if red is not None:
-            goal = red
-    else:
-        if green is not None:
-            goal = green
+    # if last_obs[2] > last_obs[9]:
+    #     if red is not None:
+    #         last_obs = red
+    # else:
+    #     if green is not None:
+    #         last_obs = green
     
 
-    # goal[:] = last_obs
+    goal[:] = last_obs
 
     
 

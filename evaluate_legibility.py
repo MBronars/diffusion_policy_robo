@@ -53,7 +53,7 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
     green_legibility_list = []
     total_legibility = []
 
-    demo_file = "/srv/rl2-lab/flash8/mbronars3/RAL/datasets/block_reach.hdf5"
+    demo_file = "/srv/rl2-lab/flash8/mbronars3/RAL/datasets/new_block_reach_long.hdf5"
     with h5py.File(demo_file, "r") as f:
         demo_lengths = []
         for index, demo in enumerate(f['data']):
@@ -98,7 +98,7 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
             red = False
 
             scale = range(1, 1 + len(trajectory))
-            scale = [x**2 for x in scale]
+            scale = [x for x in scale]
 
             if success and final_heights[0] > final_heights[1]:
                 legibility = np.linalg.norm(trajectory - green_pos, axis=1)
@@ -124,7 +124,7 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
             demo_lengths.append(len(trajectory))
         
         # print the variance in demo lengths
-        print(f"Variance in demo lengths: {np.var(demo_lengths)}")
+        # print(f"Variance in demo lengths: {np.var(demo_lengths)}")
 
 
 
@@ -170,11 +170,9 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
                 #         red_pos = red_pos[:i]
                 #         green_pos = green_pos[:i]
                 #         break
-                
-                
-                
+
                 scale = range(1, 1 + len(trajectory))
-                scale = [x**2 for x in scale]
+                scale = [x for x in scale]
                 if success and red:
                     legibility = np.linalg.norm(trajectory - green_pos, axis=1)
                     legibility = sum(legibility / scale)
@@ -193,6 +191,54 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
                     total_green += 1
                     total_success += 1
                 if not success:
+                    # get min distance to red and green
+                    red_dist = np.linalg.norm(trajectory - red_pos, axis=1)
+                    green_dist = np.linalg.norm(trajectory - green_pos, axis=1)
+
+                    # get where red
+                    
+                    red_min = np.min(red_dist[len(trajectory)//2:])
+                    green_min = np.min(green_dist[len(trajectory)//2:])
+                    # get index of min distance
+                    red_index = np.argmin(red_dist[len(trajectory)//2:]) + len(trajectory)//2
+                    green_index = np.argmin(green_dist[len(trajectory)//2:]) + len(trajectory)//2
+
+
+                    if red_min < green_min:
+                        trajectory = trajectory[:red_index]
+                        red_pos = red_pos[:red_index]
+                        green_pos = green_pos[:red_index]
+                        scale = scale[:red_index]
+                        legibility = np.linalg.norm(trajectory - green_pos, axis=1)
+                        legibility = sum(legibility / scale)
+                        legibility = (legibility - min_red_legibility) / (max_red_legibility - min_red_legibility)
+                        total_legibility.append(legibility)
+                    else:
+                        trajectory = trajectory[:green_index]
+                        green_pos = green_pos[:green_index]
+                        red_pos = red_pos[:green_index]
+                        scale = scale[:green_index]
+                        legibility = np.linalg.norm(trajectory - red_pos, axis=1) 
+                        legibility = sum(legibility / scale)
+                        legibility = (legibility - min_green_legibility) / (max_green_legibility - min_green_legibility)
+                        total_legibility.append(legibility)
+
+
+
+
+                    # fin_point = trajectory[-1]
+                    # fin_red = red_pos[-1]
+                    # fin_green = green_pos[-1]
+                    # if np.linalg.norm(fin_point - fin_red) < np.linalg.norm(fin_point - fin_green):
+                    #     legibility = np.linalg.norm(trajectory - green_pos, axis=1)
+                    #     legibility = sum(legibility / scale)
+                    #     legibility = (legibility - min_red_legibility) / (max_red_legibility - min_red_legibility)
+                    #     total_legibility.append(legibility)
+                    # else:
+                    #     legibility = np.linalg.norm(trajectory - red_pos, axis=1) 
+                    #     legibility = sum(legibility / scale)
+                    #     legibility = (legibility - min_green_legibility) / (max_green_legibility - min_green_legibility)
+                    #     total_legibility.append(legibility)
                     c = 'black'
                 elif red:
                     c = get_cmap('Reds')(random.randint(50, 90)/100)
@@ -225,7 +271,7 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
 
                 test_lengths.append(len(trajectory))
         # print the variance in test lengths
-        print(f"Variance in test lengths: {np.var(test_lengths)}")
+        # print(f"Variance in test lengths: {np.var(test_lengths)}")
 
             #set axis limits    
     ax1.set_xlim(x_min, x_max)
@@ -274,10 +320,10 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
         green_percent = np.sum(green_leg < g) / len(green_leg)
         total_percentile.append(green_percent)
 
-    tp = np.array(total_percentile)
-    print(f"Mean percentile: {mean_percentile}")
-    # print std of legibility
-    print(f"Std percentile: {np.std(tp)}")
+    # tp = np.array(total_percentile)
+    # print(f"Mean percentile: {mean_percentile}")
+    # # print std of legibility
+    # print(f"Std percentile: {np.std(tp)}")
 
 
     # from IPython import embed; embed()
@@ -288,13 +334,14 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
         final_legibility = 0
     success_rate = total_success / total
 
+    std = np.std(total_legibility)
+
 
     # round(np.mean(tp), 4)) + " +- " + str(round(np.std(tp), 4)
     # Display total success, red, and green
     if total_success > 0:
         fig.text(0.2, 0.05, 'Success Rate: ' + str(round(total_success/total, 4)), ha='center', fontsize=12)
-        fig.text(0.4, 0.05, 'Legibility: ' + str(final_legibility), ha='center', fontsize=12)
-        # fig.text(0.5, 0.05, 'Red Rate: ' + str(round(total_red/total_success, 2)), ha='center', fontsize=12)
+        fig.text(0.4, 0.05, f'Legibility: {round(final_legibility.item(), 4)} ± {round(std.item(), 4)}', ha='center', fontsize=12)
         # fig.text(0.7, 0.05, 'Green Rate: ' + str(round(total_green/total_success, 2)), ha='center', fontsize=12)
         fig.text(0.6, 0.05 , 'Num Green: ' + str(total_green), ha='center', fontsize=12)
         fig.text(0.8, 0.05, 'Num Red: ' + str(total_red), ha='center', fontsize=12)
@@ -308,7 +355,9 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
     img_name = img_name[:-5]
     plt.savefig(image_root + img_name + ".png")
 
-    print((final_legibility, success_rate))
+    np.save(image_root + img_name + "_legibility.npy", total_legibility)
+
+    print((final_legibility, std, success_rate))
     print(image_root + img_name + ".png")
     # print(f"Max green legibility: {max_green_legibility}")
     # print(f"Min green legibility: {min_green_legibility}")

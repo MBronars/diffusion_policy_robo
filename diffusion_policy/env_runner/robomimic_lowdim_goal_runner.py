@@ -227,13 +227,16 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         assert isinstance(dataset, RobomimicReplayLowdimDataset)
         
         goal_list = []
+        goal_names = []
         rn_gen = np.random.default_rng(seed=test_start_seed)
         val_dataset = dataset.get_validation_dataset()
         
         
         for i in range(len(env_init_fn_dills)):
             # seed = start_seed + i
-            goal_list.append(dataset.get_goal_list(val_set = val_dataset, rng=rn_gen))
+            goals, goal_name = dataset.get_goal_list(val_set = val_dataset, rng=rn_gen)
+            goal_list.append(goals)
+            goal_names.append(goal_name)
 
         
 
@@ -243,6 +246,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         final_goal_list = [goal[:,-n_obs_steps:] for goal in final_goal_list]
         
         self.goal_list = final_goal_list
+        self.goal_names = goal_names
         self.env_meta = env_meta
         self.env = env
         self.env_fns = env_fns
@@ -327,9 +331,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             past_action = None
             policy.reset()
 
-            # init trajectory
-            traj = dict(actions=[], rewards=[], dones=[], states=[], obs=[], next_obs=[])
-
+           
             # reset guidance list
             # guidance_list = self.guidance_list.copy()
             guidance_weight = self.guidance_weight
@@ -341,6 +343,12 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             goal_list = [goal[this_global_slice] for goal in self.goal_list]
             goal_list = [{'goal': goal} for goal in goal_list]
             goal_list = [dict_apply(goal, lambda x: x.to(device=device)) for goal in goal_list]
+            
+            current_goals = self.goal_names[this_global_slice]
+
+            # init trajectory
+            # ,
+            traj = [dict(actions=[], rewards=[], dones=[], states=[], obs=[], next_obs=[], initial_state_dict= env.call("get_state")[i], env_args = env.call("get_env_args")[i], red_goal = current_goals[i]) for i in range(this_n_active_envs)]
 
             env_name = self.env_meta['env_name']
             pbar = tqdm.tqdm(total=self.max_steps, desc=f"Eval {env_name}Lowdim {chunk_idx+1}/{n_chunks}", 
@@ -388,24 +396,25 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 if self.abs_action:
                     env_action = self.undo_transform_action(action)
 
-                next_obs, reward, done, info = env.step(env_action)
-                done = np.all(done)
+                next_obs, reward, dones, info = env.step(env_action)
+                state_dict = env.call("get_state")
+                done = np.all(dones)
                 past_action = action
-
                 
 
                 # check if goal is reach - target is the first goal in the list
                 successes = self.check_goal(obs, goal_list[0]['goal'])
                 total_successes = [1.0 if total_successes[i] or successes[i] else 0.0 for i in range(len(total_successes))]
 
-
                 if save_rollout:
                     # collect transition
-                    traj["actions"].append(env_action)
-                    traj["rewards"].append(total_successes)
-                    traj["dones"].append(done)
-                    traj["obs"].append(obs)
-                    traj["next_obs"].append(next_obs)
+                    for i in range(this_n_active_envs):
+                        traj[i]["actions"].append(env_action[i])
+                        traj[i]["rewards"].append(total_successes[i])
+                        traj[i]["dones"].append(dones[i])
+                        traj[i]["obs"].append(obs[i])
+                        traj[i]["next_obs"].append(next_obs[i])
+                        traj[i]["states"].append(state_dict[i]['states'])
 
                 obs = deepcopy(next_obs)
 
@@ -414,7 +423,6 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 done = done or np.all(total_successes)
 
                 # decay guidance weights
-                # guidance_list = self.decay_weights(guidance_list)
                 guidance_weight = guidance_weight * self.gamma
 
                 # update pbar
@@ -427,6 +435,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             # for goal conditioning, we are just doing the rewards based on self computed successes
             #all_rewards[this_global_slice] = env.call('get_attr', 'reward')[this_local_slice]
             all_rewards[this_global_slice] = total_successes
+
 
             # collect trajectory
             if save_rollout:
