@@ -122,7 +122,8 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         ngoals = [self.normalizer['goal'].normalize(goal_dict['goal']) for goal_dict in goal_list]
         B, _, Do = nobs.shape
         To = self.n_obs_steps
-        assert Do == self.obs_dim
+
+        # assert Do == self.obs_dim
         T = self.horizon
         Da = self.action_dim
 
@@ -222,34 +223,11 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
                 goal.shape[0], -1)
             null_cond = torch.zeros_like(goal_cond)
 
-            # starting_obs = np.array([ 1.29999995e-01, -1.99999996e-02,  8.32000017e-01,  0.00000000e+00,
-            #                         0.00000000e+00,  7.06825197e-01,  7.07388282e-01,  2.09999993e-01,
-            #                         1.99999996e-02,  8.32000017e-01,  0.00000000e+00,  0.00000000e+00,
-            #                         7.06825197e-01,  7.07388282e-01,  2.32768297e-01, -1.99999996e-02,
-            #                         -1.79043874e-01,  3.12768281e-01,  1.99999996e-02, -1.79043874e-01,
-            #                         7.99999982e-02,  3.99999991e-02,  0.00000000e+00, -1.02768295e-01,
-            #                         1.34614546e-18,  1.01104391e+00,  9.97976601e-01,  2.45922565e-04,
-            #                         6.35816976e-02,  1.56678761e-05,  2.08330005e-02, -2.08330005e-02])
-
-            # target_obs = obs[:, 0].cpu().numpy()
-
-            # # from IPython import embed; embed()
-
-            # # check if obs_cond is the same as starting_obs
-            # for o in target_obs:
-            #     if np.testing.assert_almost_equal(actual = o, desired = starting_obs, decimal = 4):
-            #         print("obs_cond is the same as starting_obs")
-            
-            # starting_obs = torch.from_numpy(starting_obs).unsqueeze(0).unsqueeze(0).repeat(obs.to(obs.device))
-
-            # jointly train unconditional and conditional models by randomly dropping out goal
-            
-            # if uncond:
             if random.random() < self.p_uncond:
                 global_cond = torch.cat([obs_cond, null_cond], dim=-1)
             else:
                 global_cond = torch.cat([obs_cond, goal_cond], dim=-1)
-
+            
             if self.pred_action_steps_only:
                 To = self.n_obs_steps
                 start = To

@@ -287,7 +287,9 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         reduced_goal = goal[:, -1, [2, 9]].detach().cpu().numpy()
         reduced_obs = obs[:, -1, [2, 9]]
         target = np.where(reduced_goal[..., 0] > reduced_goal[..., 1], 1, 2)
+        # uncomment for simulation
         condition = (reduced_obs[..., 0] > 0.84) | (reduced_obs[..., 1] > 0.84)
+        # condition = (reduced_obs[..., 0] > .98) | (reduced_obs[..., 1] > .98)
         current = np.where(condition, np.where(reduced_obs[..., 0] > reduced_obs[..., 1], 1, 2), 0)
         successes = (current == target).astype(float)
         return successes

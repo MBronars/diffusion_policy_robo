@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
 import torch.nn.functional as F
+import numpy as np
 
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.policy.base_lowdim_policy import BaseLowdimPolicy
@@ -46,8 +47,15 @@ class BETLowdimPolicy(BaseLowdimPolicy):
         obs = torch.full((B,T,Do), -2, dtype=nobs.dtype, device=nobs.device)
         obs[:,:To,:] = nobs[:,:To,:]
         
-        goal = ngoal[0, 0, :]
-        goal = goal.repeat(B, T, 1)
+        # goal = ngoal[0, 0, :]
+
+        # from IPython import embed; embed()
+
+        # goal = goal.repeat(B, T, 1)
+
+        # goal = ngoal.repeat(1, 5, 1)
+        goal = ngoal[:, :1, :]
+        goal = goal.repeat(1, T, 1)
 
         # obs = torch.cat([obs, goal], dim=-1)
 

@@ -77,11 +77,11 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
             #         total_green += 1
             #         c = get_cmap('Greens')(random.randint(50, 90)/100)
 
-            red_pos = f['data'][demo]["obs"]["object"][:, 0:3] 
-            green_pos = f['data'][demo]["obs"]["object"][:, 7:10]
+            red_pos = f['data'][demo]["obs"]["object"][:, 0:2] 
+            green_pos = f['data'][demo]["obs"]["object"][:, 7:9]
 
             # only keep every n_action_steps
-            trajectory = trajectory[::n_action_steps]
+            trajectory = trajectory[::n_action_steps][:, 0:2]
             red_pos = red_pos[::n_action_steps]
             green_pos = green_pos[::n_action_steps]
 
@@ -134,169 +134,182 @@ def get_legibility(filename = "/srv/rl2-lab/flash8/mbronars3/ICRA/results/ablati
     with h5py.File(filename, "r") as f:
         test_lengths = []        
         for index, demo in enumerate(f['data']):
-            _, length, _, _ = f['data'][demo]['next_obs'].shape
-            for i in range(length):
-                total += 1
+            # _, length, _, _ = f['data'][demo]['next_obs'].shape
+            # for i in range(length):
+            total += 1
+            
+            # trajectory = f['data'][demo]['next_obs'][:, i, 1, [20, 21]]
+            # traj_plot = f['data'][demo]['next_obs'][:, i, 1, [20, 21, 22]]
+            # heights = f['data'][demo]['next_obs'][:, i, 1, [2, 9]]
+
+            # red_pos = f['data'][demo]['next_obs'][:, i, 1, [0, 1]]
+            # green_pos = f['data'][demo]['next_obs'][:, i, 1, [7, 8]]
+            # successes = f['data'][demo]['rewards'][:, i]
+
+            trajectory = f['data'][demo]['next_obs'][:, [20, 21]]
+            traj_plot = f['data'][demo]['next_obs'][:, [20, 21, 22]]
+            heights = f['data'][demo]['next_obs'][:, [2, 9]]
+
+            red_pos = f['data'][demo]['next_obs'][:, [0, 1]]
+            green_pos = f['data'][demo]['next_obs'][:, [7, 8]]
+
+            successes = f['data'][demo]['rewards'][:]
+
+            
+            
+            # get index of first 1 in successes
+
+            success = successes.any()
+            stop_index = np.argmax(successes, axis=0) * 2
+            red = heights[stop_index-1, 0] > heights[stop_index-1, 1]
+
+            if success:
+                trajectory = trajectory[:stop_index]
+                red_pos = red_pos[:stop_index]
+                green_pos = green_pos[:stop_index]
+                traj_plot = traj_plot[:stop_index]
+
+            
+            # red = successes[:, 0].any()
+
+            # if index%2 == 0:
+            #     success = success and red
+            # else:
+            #     success = success and not red
+
+            # for i, x in enumerate(successes):
+            #     if x.any():
+            #         trajectory = trajectory[:i]
+            #         red_pos = red_pos[:i]
+            #         green_pos = green_pos[:i]
+            #         break
+
+            scale = range(1, 1 + len(trajectory))
+            scale = [x for x in scale]
+            if success and red:
+                legibility = np.linalg.norm(trajectory - green_pos, axis=1)
+                legibility = sum(legibility / scale)
+                test_red_legibility_list.append(legibility)
+
+                legibility = (legibility - min_red_legibility) / (max_red_legibility - min_red_legibility)
+                total_legibility.append(legibility)
+                total_red += 1
+                total_success += 1
+            elif success:
+                legibility = np.linalg.norm(trajectory - red_pos, axis=1) 
+                legibility = sum(legibility / scale)
+                legibility = (legibility - min_green_legibility) / (max_green_legibility - min_green_legibility)
+                total_legibility.append(legibility)
+                test_green_legibility_list.append(legibility)
+                total_green += 1
+                total_success += 1
+            if not success:
+                # get min distance to red and green
+                red_dist = np.linalg.norm(trajectory - red_pos, axis=1)
+                green_dist = np.linalg.norm(trajectory - green_pos, axis=1)
+
+                # get where red
                 
-                trajectory = f['data'][demo]['next_obs'][:, i, 1, [20, 21, 22]]
-                heights = f['data'][demo]['next_obs'][:, i, 1, [2, 9]]
+                red_min = np.min(red_dist[len(trajectory)//2:])
+                green_min = np.min(green_dist[len(trajectory)//2:])
+                # get index of min distance
+                red_index = np.argmin(red_dist[len(trajectory)//2:]) + len(trajectory)//2
+                green_index = np.argmin(green_dist[len(trajectory)//2:]) + len(trajectory)//2
 
-                red_pos = f['data'][demo]['next_obs'][:, i, 1, [0, 1, 2]]
-                green_pos = f['data'][demo]['next_obs'][:, i, 1, [7, 8, 9]]
 
-                successes = f['data'][demo]['rewards'][:, i]
-                
-                # get index of first 1 in successes
-
-                success = successes.any()
-                stop_index = np.argmax(successes, axis=0)
-                red = heights[stop_index-1, 0] > heights[stop_index-1, 1]
-
-                if success:
-                    trajectory = trajectory[:stop_index]
-                    red_pos = red_pos[:stop_index]
-                    green_pos = green_pos[:stop_index]
-                
-                # red = successes[:, 0].any()
-
-                # if index%2 == 0:
-                #     success = success and red
-                # else:
-                #     success = success and not red
-
-                # for i, x in enumerate(successes):
-                #     if x.any():
-                #         trajectory = trajectory[:i]
-                #         red_pos = red_pos[:i]
-                #         green_pos = green_pos[:i]
-                #         break
-
-                scale = range(1, 1 + len(trajectory))
-                scale = [x for x in scale]
-                if success and red:
+                if red_min < green_min:
+                    trajectory = trajectory[:red_index]
+                    red_pos = red_pos[:red_index]
+                    green_pos = green_pos[:red_index]
+                    scale = scale[:red_index]
                     legibility = np.linalg.norm(trajectory - green_pos, axis=1)
                     legibility = sum(legibility / scale)
-                    test_red_legibility_list.append(legibility)
-
                     legibility = (legibility - min_red_legibility) / (max_red_legibility - min_red_legibility)
                     total_legibility.append(legibility)
-                    total_red += 1
-                    total_success += 1
-                elif success:
+                else:
+                    trajectory = trajectory[:green_index]
+                    green_pos = green_pos[:green_index]
+                    red_pos = red_pos[:green_index]
+                    scale = scale[:green_index]
                     legibility = np.linalg.norm(trajectory - red_pos, axis=1) 
                     legibility = sum(legibility / scale)
                     legibility = (legibility - min_green_legibility) / (max_green_legibility - min_green_legibility)
                     total_legibility.append(legibility)
-                    test_green_legibility_list.append(legibility)
-                    total_green += 1
-                    total_success += 1
-                if not success:
-                    # get min distance to red and green
-                    red_dist = np.linalg.norm(trajectory - red_pos, axis=1)
-                    green_dist = np.linalg.norm(trajectory - green_pos, axis=1)
-
-                    # get where red
-                    
-                    red_min = np.min(red_dist[len(trajectory)//2:])
-                    green_min = np.min(green_dist[len(trajectory)//2:])
-                    # get index of min distance
-                    red_index = np.argmin(red_dist[len(trajectory)//2:]) + len(trajectory)//2
-                    green_index = np.argmin(green_dist[len(trajectory)//2:]) + len(trajectory)//2
-
-
-                    if red_min < green_min:
-                        trajectory = trajectory[:red_index]
-                        red_pos = red_pos[:red_index]
-                        green_pos = green_pos[:red_index]
-                        scale = scale[:red_index]
-                        legibility = np.linalg.norm(trajectory - green_pos, axis=1)
-                        legibility = sum(legibility / scale)
-                        legibility = (legibility - min_red_legibility) / (max_red_legibility - min_red_legibility)
-                        total_legibility.append(legibility)
-                    else:
-                        trajectory = trajectory[:green_index]
-                        green_pos = green_pos[:green_index]
-                        red_pos = red_pos[:green_index]
-                        scale = scale[:green_index]
-                        legibility = np.linalg.norm(trajectory - red_pos, axis=1) 
-                        legibility = sum(legibility / scale)
-                        legibility = (legibility - min_green_legibility) / (max_green_legibility - min_green_legibility)
-                        total_legibility.append(legibility)
 
 
 
 
-                    # fin_point = trajectory[-1]
-                    # fin_red = red_pos[-1]
-                    # fin_green = green_pos[-1]
-                    # if np.linalg.norm(fin_point - fin_red) < np.linalg.norm(fin_point - fin_green):
-                    #     legibility = np.linalg.norm(trajectory - green_pos, axis=1)
-                    #     legibility = sum(legibility / scale)
-                    #     legibility = (legibility - min_red_legibility) / (max_red_legibility - min_red_legibility)
-                    #     total_legibility.append(legibility)
-                    # else:
-                    #     legibility = np.linalg.norm(trajectory - red_pos, axis=1) 
-                    #     legibility = sum(legibility / scale)
-                    #     legibility = (legibility - min_green_legibility) / (max_green_legibility - min_green_legibility)
-                    #     total_legibility.append(legibility)
-                    c = 'black'
-                elif red:
-                    c = get_cmap('Reds')(random.randint(50, 90)/100)
-                else:
-                    c = get_cmap('Greens')(random.randint(50, 90)/100)
+                # fin_point = trajectory[-1]
+                # fin_red = red_pos[-1]
+                # fin_green = green_pos[-1]
+                # if np.linalg.norm(fin_point - fin_red) < np.linalg.norm(fin_point - fin_green):
+                #     legibility = np.linalg.norm(trajectory - green_pos, axis=1)
+                #     legibility = sum(legibility / scale)
+                #     legibility = (legibility - min_red_legibility) / (max_red_legibility - min_red_legibility)
+                #     total_legibility.append(legibility)
+                # else:
+                #     legibility = np.linalg.norm(trajectory - red_pos, axis=1) 
+                #     legibility = sum(legibility / scale)
+                #     legibility = (legibility - min_green_legibility) / (max_green_legibility - min_green_legibility)
+                #     total_legibility.append(legibility)
+                c = 'black'
+            elif red:
+                c = get_cmap('Reds')(random.randint(50, 90)/100)
+            else:
+                c = get_cmap('Greens')(random.randint(50, 90)/100)
 
 
-                # Extract x, y, and z coordinates from trajectory
-                x = trajectory[:, 0]
-                y = trajectory[:, 1]
-                z = trajectory[:, 2]
+            # Extract x, y, and z coordinates from trajectory
+            x = traj_plot[:, 0]
+            y = traj_plot[:, 1]
+            z = traj_plot[:, 2]
 
-                #change max and min values of x, y, and z if necessary
-                if x.min() < x_min and x.min() > -.3:
-                    x_min = x.min()
-                if x.max() > x_max and x.max() < .3:
-                    x_max = x.max()
-                if y.min() < y_min and y.min() > -.3:
-                    y_min = y.min()
-                if y.max() > y_max and y.max() < .3:
-                    y_max = y.max()
-                if z.min() < z_min and z.min() > -1:
-                    z_min = z.min()
-                if z.max() > z_max and z.max() < 1.1:
-                    z_max = z.max()
-                
-                ax1.plot(x, y, z, color = c)
-                ax2.plot(x, y, z, color = c)
-                ax3.plot(x, y, z, color = c)
+            #change max and min values of x, y, and z if necessary
+            if x.min() < x_min and x.min() > -.3:
+                x_min = x.min()
+            if x.max() > x_max and x.max() < .3:
+                x_max = x.max()
+            if y.min() < y_min and y.min() > -.3:
+                y_min = y.min()
+            if y.max() > y_max and y.max() < .3:
+                y_max = y.max()
+            if z.min() < z_min and z.min() > -1:
+                z_min = z.min()
+            if z.max() > z_max and z.max() < 1.1:
+                z_max = z.max()
+            
+            ax1.plot(x, y, z, color = c)
+            ax2.plot(x, y, z, color = c)
+            ax3.plot(x, y, z, color = c)
 
-                test_lengths.append(len(trajectory))
+            test_lengths.append(len(trajectory))
         # print the variance in test lengths
         # print(f"Variance in test lengths: {np.var(test_lengths)}")
 
-            #set axis limits    
-    ax1.set_xlim(x_min, x_max)
-    ax1.set_ylim(y_min, y_max)
-    ax1.set_zlim(z_min, z_max)
+                #set axis limits    
+    # ax1.set_xlim(x_min, x_max)
+    # ax1.set_ylim(y_min, y_max)
+    # ax1.set_zlim(z_min, z_max)
 
-    ax1.set_xticklabels([])
-    ax1.set_yticklabels([])
-    ax1.set_zticklabels([])
+    # ax1.set_xticklabels([])
+    # ax1.set_yticklabels([])
+    # ax1.set_zticklabels([])
 
-    ax2.set_xlim(x_min, x_max)
-    ax2.set_ylim(y_min, y_max)
-    ax2.set_zlim(z_min, z_max)
+    # ax2.set_xlim(x_min, x_max)
+    # ax2.set_ylim(y_min, y_max)
+    # ax2.set_zlim(z_min, z_max)
 
-    ax2.set_xticklabels([])
-    ax2.set_yticklabels([])
-    ax2.set_zticklabels([])
+    # ax2.set_xticklabels([])
+    # ax2.set_yticklabels([])
+    # ax2.set_zticklabels([])
 
-    ax3.set_xlim(x_min, x_max)
-    ax3.set_ylim(y_min, y_max)
-    ax3.set_zlim(z_min, z_max)
+    # ax3.set_xlim(x_min, x_max)
+    # ax3.set_ylim(y_min, y_max)
+    # ax3.set_zlim(z_min, z_max)
 
-    ax3.set_xticklabels([])
-    ax3.set_yticklabels([])
-    ax3.set_zticklabels([])
+    # ax3.set_xticklabels([])
+    # ax3.set_yticklabels([])
+    # ax3.set_zticklabels([])
 
     red_leg = np.array(red_legibility_list)
     green_leg = np.array(green_legibility_list)

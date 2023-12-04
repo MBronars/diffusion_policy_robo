@@ -51,40 +51,63 @@ class KitchenLowdimDataset(BaseLowdimDataset):
 
         observations, actions, masks = transpose_batch_timestep(observations, actions, masks)
 
+        average_objects = {"microwave" : [], "bottom burner" : [], "top burner" : [], "light switch" : [], "slide cabinet" : [], "hinge cabinet" : [], "kettle" : []}
+
+        target_objects = ["microwave", "kettle", "bottom burner", "light switch", "slide cabinet"]
+
         self.replay_buffer = ReplayBuffer.create_empty_numpy()
         for i in range(len(masks)):
             eps_len = int(masks[i].sum())
             obs = observations[i,:eps_len].astype(np.float32)
             obs = obs[:,:30]
 
-            # start_idx = 0
-            # last_nonzero = 0
-            # last_goal = np.zeros(30)
-            # for idx, ob in enumerate(obs):
-            #     goal = np.zeros(30)
-            #     holder = np.zeros(30)
-            #     for goals, thresholds in OBS_ELEMENT_GOALS.items():
-            #         current = ob[OBS_ELEMENT_INDICES[goals]]
-            #         target = thresholds
-            #         distance = np.linalg.norm(current - target)
-            #         include = distance < BONUS_THRESH
-            #         if include:
-            #             goal[OBS_ELEMENT_INDICES[goals]] = current
-            #             holder[OBS_ELEMENT_INDICES[goals]] = current
-            #     num_nonzero = np.count_nonzero(goal)
-            #     if num_nonzero > last_nonzero:
-            #         last_nonzero = num_nonzero
-            #         curr_obs = obs[start_idx:idx+1]
+            current_objects = {"microwave" : None, "bottom burner" : None, "top burner" : None, "light switch" : None, "slide cabinet" : None, "hinge cabinet" : None, "kettle" : None}
+            start_idx = 0
+            last_nonzero = 0
+            last_goal = np.zeros(30)
 
-            #         goal = goal[None,:].repeat(len(curr_obs), axis=0)
-            #         curr_data = actions[i, start_idx:idx+1].astype(np.float32)
-            #         episode = {
-            #             'obs': curr_obs,
-            #             'goal': goal,
-            #             'action': curr_data
-            #         }
-            #         self.replay_buffer.add_episode(episode)
-            #         start_idx = idx+1
+            count = 0
+            for idx, ob in enumerate(obs):
+                goal = np.zeros(30)
+                holder = np.zeros(30)
+                for goals, thresholds in OBS_ELEMENT_GOALS.items():
+                    current = ob[OBS_ELEMENT_INDICES[goals]]
+                    target = thresholds
+                    distance = np.linalg.norm(current - target)
+                    include = distance < BONUS_THRESH
+                    if include and count == 0:
+                        goal[OBS_ELEMENT_INDICES[goals]] = current
+                        holder[OBS_ELEMENT_INDICES[goals]] = current
+                        if current_objects[goals] is None:
+                            current_objects[goals] = idx
+                        count += 1
+
+                num_nonzero = np.count_nonzero(goal)
+                if num_nonzero > last_nonzero:
+                    last_nonzero = num_nonzero
+                    curr_obs = obs[start_idx:idx+1]
+
+                    goal = goal[None,:].repeat(len(curr_obs), axis=0)
+                    curr_data = actions[i, start_idx:idx+1].astype(np.float32)
+                    episode = {
+                        'obs': curr_obs,
+                        'goal': goal,
+                        'action': curr_data
+                    }
+                    self.replay_buffer.add_episode(episode)
+                    start_idx = idx+1
+            
+            # get the keys that are not associated with null values
+            keys = [key for key, value in current_objects.items() if value is not None]
+
+            # check if all of the keys are in the target objects
+            if all(elem in target_objects for elem in keys):
+                for key in target_objects:
+                    if key in keys:
+                        average_objects[key].append((280 - current_objects[key]) / 280.0)
+                    else:
+                        average_objects[key].append(0)
+
 
 
             goal = obs[-1,:]
@@ -109,6 +132,9 @@ class KitchenLowdimDataset(BaseLowdimDataset):
                 'action': action
             }
             self.replay_buffer.add_episode(data)
+        
+        from IPython import embed; embed()
+        0/0
         
         val_mask = get_val_mask(
             n_episodes=self.replay_buffer.n_episodes, 

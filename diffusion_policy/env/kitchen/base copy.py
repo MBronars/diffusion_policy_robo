@@ -31,7 +31,6 @@ BONUS_THRESH = 0.3
 logger = logging.getLogger()
 
 
-
 class KitchenBase(KitchenTaskRelaxV1):
     # A string of element names. The robot's task is then to modify each of
     # these elements appropriately.
@@ -59,7 +58,6 @@ class KitchenBase(KitchenTaskRelaxV1):
     ):
         self.tasks_to_complete = list(self.TASK_ELEMENTS)
         self.goal_masking = True
-        self.completed_tasks = []
         super(KitchenBase, self).__init__(use_abs_action=use_abs_action, **kwargs)
 
     def set_goal_masking(self, goal_masking=True):
@@ -81,7 +79,6 @@ class KitchenBase(KitchenTaskRelaxV1):
 
     def reset_model(self):
         self.tasks_to_complete = list(self.TASK_ELEMENTS)
-        self.completed_tasks = []
         return super(KitchenBase, self).reset_model()
 
     def _get_reward_n_score(self, obs_dict):
@@ -107,11 +104,8 @@ class KitchenBase(KitchenTaskRelaxV1):
                 else complete
             )
             if condition:  # element == self.tasks_to_complete[0]:
+                print("Task {} completed!".format(element))
                 completions.append(element)
-                self.completed_tasks.append(element)
-                num_completed = len(self.completed_tasks)
-                print("Task {} completed!, now {} are completed".format(element, num_completed))
-                
             all_completed_so_far = all_completed_so_far and complete
         if self.REMOVE_TASKS_WHEN_COMPLETE:
             [self.tasks_to_complete.remove(element) for element in completions]
@@ -142,9 +136,6 @@ class KitchenBase(KitchenTaskRelaxV1):
     def get_goal(self):
         """Loads goal state from dataset for goal-conditioned approaches (like RPL)."""
         raise NotImplementedError
-    
-    def get_completed_tasks(self):
-        return self.completed_tasks
 
     def _split_data_into_seqs(self, data):
         """Splits dataset object into list of sequence dicts."""

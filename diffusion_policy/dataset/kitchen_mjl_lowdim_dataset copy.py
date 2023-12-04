@@ -11,27 +11,6 @@ from diffusion_policy.model.common.normalizer import LinearNormalizer, SingleFie
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 from diffusion_policy.env.kitchen.kitchen_util import parse_mjl_logs
 
-
-OBS_ELEMENT_INDICES = {
-    "bottom burner": np.array([11, 12]),
-    "top burner": np.array([15, 16]),
-    "light switch": np.array([17, 18]),
-    "slide cabinet": np.array([19]),
-    "hinge cabinet": np.array([20, 21]),
-    "microwave": np.array([22]),
-    "kettle": np.array([23, 24, 25, 26, 27, 28, 29]),
-}
-OBS_ELEMENT_GOALS = {
-    "bottom burner": np.array([-0.88, -0.01]),
-    "top burner": np.array([-0.92, -0.01]),
-    "light switch": np.array([-0.69, -0.05]),
-    "slide cabinet": np.array([0.37]),
-    "hinge cabinet": np.array([0.0, 1.45]),
-    "microwave": np.array([-0.75]),
-    "kettle": np.array([-0.23, 0.75, 1.62, 0.99, 0.0, 0.0, -0.06]),
-}
-BONUS_THRESH = 0.3
-
 class KitchenMjlLowdimDataset(BaseLowdimDataset):
     def __init__(self,
             dataset_dir,
@@ -62,25 +41,9 @@ class KitchenMjlLowdimDataset(BaseLowdimDataset):
                 qpos = data['qpos'].astype(np.float32)
                 obs = np.concatenate([
                     qpos[:,:9],
-                    qpos[:,-21:]
-                    #np.zeros((len(qpos),30),dtype=np.float32)
+                    qpos[:,-21:],
+                    np.zeros((len(qpos),30),dtype=np.float32)
                 ], axis=-1)
-
-                raw_goal = obs[-1, :]
-
-                goal = np.zeros(30)
-
-                # mask out the elements that are not within the bonus threshold for each task
-                for goals, thresholds in OBS_ELEMENT_GOALS.items():
-                    current = raw_goal[OBS_ELEMENT_INDICES[goals]]
-                    target = thresholds
-                    distance = np.linalg.norm(current - target)
-                    include = distance < BONUS_THRESH
-                    if include:
-                        goal[OBS_ELEMENT_INDICES[goals]] = current
-
-                goal = goal[None,:].repeat(len(obs), axis=0)
-
                 if robot_noise_ratio > 0:
                     # add observation noise to match real robot
                     noise = robot_noise_ratio * robot_pos_noise_amp * rng.uniform(
@@ -88,7 +51,6 @@ class KitchenMjlLowdimDataset(BaseLowdimDataset):
                     obs[:,:30] += noise
                 episode = {
                     'obs': obs,
-                    'goal': goal,
                     'action': data['ctrl'].astype(np.float32)
                 }
                 self.replay_buffer.add_episode(episode)
@@ -127,7 +89,6 @@ class KitchenMjlLowdimDataset(BaseLowdimDataset):
     def get_normalizer(self, mode='limits', **kwargs):
         data = {
             'obs': self.replay_buffer['obs'],
-            'goal': self.replay_buffer['goal'],
             'action': self.replay_buffer['action']
         }
         if 'range_eps' not in kwargs:

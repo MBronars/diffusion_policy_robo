@@ -211,6 +211,8 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
 
         red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/new_red.npy")
         green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/new_green.npy")
+        # red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/real_red.npy")
+        # green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/real_green.npy")
         red = torch.from_numpy(red)
         green = torch.from_numpy(green)
         # broadcast green from shape ([32]) to ([16, 32])

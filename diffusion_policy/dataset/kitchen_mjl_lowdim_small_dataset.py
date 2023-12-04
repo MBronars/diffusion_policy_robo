@@ -66,6 +66,56 @@ class KitchenMjlLowdimDataset(BaseLowdimDataset):
                     #np.zeros((len(qpos),30),dtype=np.float32)
                 ], axis=-1)
 
+                start_idx = 0
+                last_nonzero = 0
+                last_goal = np.zeros(30)
+                for i, ob in enumerate(obs):
+                    goal = np.zeros(30)
+                    holder = np.zeros(30)
+                    for goals, thresholds in OBS_ELEMENT_GOALS.items():
+                        current = ob[OBS_ELEMENT_INDICES[goals]]
+                        target = thresholds
+                        distance = np.linalg.norm(current - target)
+                        include = distance < BONUS_THRESH
+                        if include:
+                            goal[OBS_ELEMENT_INDICES[goals]] = current
+                            holder[OBS_ELEMENT_INDICES[goals]] = current
+                    
+                    # get number of non-zero elements in goal
+                    num_nonzero = np.count_nonzero(goal)
+                    if num_nonzero > last_nonzero:
+                        last_nonzero = num_nonzero
+                        curr_obs = obs[start_idx:i+1]
+
+                        # maybe remove these three lines if things break
+                        # temp = last_goal.copy()
+                        # # get indicies of non-zero elements
+                        # last_goal = goal.copy()
+                        # # set non-zero elements to zero
+                        # goal[np.where(temp != 0)[0]] = 0
+
+                        goal = goal[None,:].repeat(len(curr_obs), axis=0)
+
+
+                        if robot_noise_ratio > 0:
+                            # add observation noise to match real robot
+                            noise = robot_noise_ratio * robot_pos_noise_amp * rng.uniform(
+                                low=-1., high=1., size=(curr_obs.shape[0], 30))
+                            curr_obs[:,:30] += noise
+
+                        
+
+                        curr_data = data['ctrl'][start_idx:i+1].astype(np.float32)
+                        episode = {
+                            'obs': curr_obs,
+                            'goal': goal,
+                            'action': curr_data
+                        }
+                        self.replay_buffer.add_episode(episode)
+                        start_idx = i+1
+
+
+
                 raw_goal = obs[-1, :]
 
                 goal = np.zeros(30)

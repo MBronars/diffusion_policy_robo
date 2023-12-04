@@ -8,30 +8,6 @@ from diffusion_policy.common.replay_buffer import ReplayBuffer
 from diffusion_policy.common.sampler import SequenceSampler, get_val_mask
 from diffusion_policy.model.common.normalizer import LinearNormalizer, SingleFieldLinearNormalizer
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
-import einops
-def transpose_batch_timestep(*args):
-    return (einops.rearrange(arg, "b t ... -> t b ...") for arg in args)
-
-
-OBS_ELEMENT_INDICES = {
-    "bottom burner": np.array([11, 12]),
-    "top burner": np.array([15, 16]),
-    "light switch": np.array([17, 18]),
-    "slide cabinet": np.array([19]),
-    "hinge cabinet": np.array([20, 21]),
-    "microwave": np.array([22]),
-    "kettle": np.array([23, 24, 25, 26, 27, 28, 29]),
-}
-OBS_ELEMENT_GOALS = {
-    "bottom burner": np.array([-0.88, -0.01]),
-    "top burner": np.array([-0.92, -0.01]),
-    "light switch": np.array([-0.69, -0.05]),
-    "slide cabinet": np.array([0.37]),
-    "hinge cabinet": np.array([0.0, 1.45]),
-    "microwave": np.array([-0.75]),
-    "kettle": np.array([-0.23, 0.75, 1.62, 0.99, 0.0, 0.0, -0.06]),
-}
-BONUS_THRESH = 0.3
 
 class KitchenLowdimDataset(BaseLowdimDataset):
     def __init__(self,
@@ -49,63 +25,13 @@ class KitchenLowdimDataset(BaseLowdimDataset):
         actions = np.load(data_directory / "actions_seq.npy")
         masks = np.load(data_directory / "existence_mask.npy")
 
-        observations, actions, masks = transpose_batch_timestep(observations, actions, masks)
-
         self.replay_buffer = ReplayBuffer.create_empty_numpy()
         for i in range(len(masks)):
             eps_len = int(masks[i].sum())
             obs = observations[i,:eps_len].astype(np.float32)
-            obs = obs[:,:30]
-
-            # start_idx = 0
-            # last_nonzero = 0
-            # last_goal = np.zeros(30)
-            # for idx, ob in enumerate(obs):
-            #     goal = np.zeros(30)
-            #     holder = np.zeros(30)
-            #     for goals, thresholds in OBS_ELEMENT_GOALS.items():
-            #         current = ob[OBS_ELEMENT_INDICES[goals]]
-            #         target = thresholds
-            #         distance = np.linalg.norm(current - target)
-            #         include = distance < BONUS_THRESH
-            #         if include:
-            #             goal[OBS_ELEMENT_INDICES[goals]] = current
-            #             holder[OBS_ELEMENT_INDICES[goals]] = current
-            #     num_nonzero = np.count_nonzero(goal)
-            #     if num_nonzero > last_nonzero:
-            #         last_nonzero = num_nonzero
-            #         curr_obs = obs[start_idx:idx+1]
-
-            #         goal = goal[None,:].repeat(len(curr_obs), axis=0)
-            #         curr_data = actions[i, start_idx:idx+1].astype(np.float32)
-            #         episode = {
-            #             'obs': curr_obs,
-            #             'goal': goal,
-            #             'action': curr_data
-            #         }
-            #         self.replay_buffer.add_episode(episode)
-            #         start_idx = idx+1
-
-
-            goal = obs[-1,:]
-            raw_goal = obs[-1, :]
-
-            goal = np.zeros(30)
-
-            # mask out the elements that are not within the bonus threshold for each task
-            for goals, thresholds in OBS_ELEMENT_GOALS.items():
-                current = raw_goal[OBS_ELEMENT_INDICES[goals]]
-                target = thresholds
-                distance = np.linalg.norm(current - target)
-                include = distance < BONUS_THRESH
-                if include:
-                    goal[OBS_ELEMENT_INDICES[goals]] = current
-            
-            goal = goal[None,:].repeat(eps_len, axis=0)
             action = actions[i,:eps_len].astype(np.float32)
             data = {                              
                 'obs': obs,
-                'goal': goal,
                 'action': action
             }
             self.replay_buffer.add_episode(data)
@@ -142,7 +68,6 @@ class KitchenLowdimDataset(BaseLowdimDataset):
     def get_normalizer(self, mode='limits', **kwargs):
         data = {
             'obs': self.replay_buffer['obs'],
-            'goal': self.replay_buffer['goal'],
             'action': self.replay_buffer['action']
         }
         if 'range_eps' not in kwargs:

@@ -22,7 +22,6 @@ class TopKCheckpointManager:
     def get_ckpt_path(self, data: Dict[str, float]) -> Optional[str]:
         if self.k == 0:
             return None
-
         value = data[self.monitor_key]
         ckpt_path = os.path.join(
             self.save_dir, self.format_str.format(**data))

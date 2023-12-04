@@ -26,10 +26,11 @@ from evaluate_legibility import get_legibility
 @click.option('-c', '--checkpoint', required=True)
 @click.option('-o', '--output_dir', required=True)
 @click.option('-d', '--device', default='cuda:0')
-@click.option('-a', '--alpha', default=0.85)
-@click.option('-g', '--gamma', default=0.75)
-@click.option('-w', '--guidance_weight', default=10)
-def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight):
+@click.option('-a', '--alpha', default=0.95)
+@click.option('-g', '--gamma', default=0.45)
+@click.option('-w', '--guidance_weight', default=15.0)
+@click.option('-s', '--seed', default=0)
+def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight, seed):
     if os.path.exists(output_dir):
         click.confirm(f"Output path {output_dir} already exists! Overwrite?", abort=True)
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -44,9 +45,12 @@ def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight):
     # 0.25, 0.5, 0.75, 0.99, 1
     cfg.task.env_runner.gamma = gamma
 
-    cfg.task.env_runner.max_steps= 100
+    cfg.task.env_runner.test_start_seed = seed
+
+    # cfg.task.env_runner.max_steps= 100
 
     cfg.task.env_runner.n_test = 25
+    cfg.task.env_runner.n_envs = 25
 
 
     # -1, 0, 1, 2, 5, 10
@@ -59,12 +63,12 @@ def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight):
     workspace.load_payload(payload, exclude_keys=None, include_keys=None)
     
     # get policy from workspace
-    # policy = workspace.model
-    # if cfg.training.use_ema:
-    #     policy = workspace.ema_model
+    policy = workspace.model
+    if cfg.training.use_ema:
+        policy = workspace.ema_model
 
     # policy = workspace.policy
-    policy = workspace.model
+    # policy = workspace.model
     
     device = torch.device(device)
     policy.to(device)
