@@ -118,6 +118,7 @@ class MultiStepWrapper(gym.Wrapper):
             self._add_info(info)
 
         observation = self._get_obs(self.n_obs_steps)
+        # observation = self._get_obs(len(action))
         reward = aggregate(self.reward, self.reward_agg_method)
         done = aggregate(self.done, 'max')
         info = dict_take_last_n(self.info, self.n_obs_steps)

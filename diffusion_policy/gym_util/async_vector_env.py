@@ -291,7 +291,6 @@ class AsyncVectorEnv(VectorEnv):
         self._raise_if_errors(successes)
         self._state = AsyncState.DEFAULT
         observations_list, rewards, dones, infos = zip(*results)
-
         if not self.shared_memory:
             self.observations = concatenate(
                 observations_list, self.observations, self.single_observation_space

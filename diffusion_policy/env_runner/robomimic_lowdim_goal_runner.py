@@ -290,6 +290,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         # uncomment for simulation
         condition = (reduced_obs[..., 0] > 0.84) | (reduced_obs[..., 1] > 0.84)
         # condition = (reduced_obs[..., 0] > .98) | (reduced_obs[..., 1] > .98)
+        # condition = (reduced_obs[..., 0] > 1.0) | (reduced_obs[..., 1] > 1.0)
         current = np.where(condition, np.where(reduced_obs[..., 0] > reduced_obs[..., 1], 1, 2), 0)
         successes = (current == target).astype(float)
         return successes
@@ -366,6 +367,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 np_obs_dict = {
                     # handle n_latency_steps by discarding the last n_latency_steps
                     'obs': obs[:,:self.n_obs_steps].astype(np.float32)
+                    # 'obs': obs[:,-2:, :29].astype(np.float32)
                 }
                 if self.past_action and (past_action is not None):
                     # TODO: not tested

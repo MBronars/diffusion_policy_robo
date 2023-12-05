@@ -18,6 +18,7 @@ import wandb
 import json
 import h5py
 import numpy as np
+from omegaconf import OmegaConf
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.dataset.base_dataset import BaseLowdimDataset
 from evaluate_legibility import get_legibility
@@ -26,9 +27,9 @@ from evaluate_legibility import get_legibility
 @click.option('-c', '--checkpoint', required=True)
 @click.option('-o', '--output_dir', required=True)
 @click.option('-d', '--device', default='cuda:0')
-@click.option('-a', '--alpha', default=0.95)
-@click.option('-g', '--gamma', default=0.45)
-@click.option('-w', '--guidance_weight', default=15.0)
+@click.option('-a', '--alpha', default=0.9)
+@click.option('-g', '--gamma', default=0.6)
+@click.option('-w', '--guidance_weight', default=7.5)
 @click.option('-s', '--seed', default=0)
 def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight, seed):
     if os.path.exists(output_dir):
@@ -39,17 +40,20 @@ def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight, seed):
     payload = torch.load(open(checkpoint, 'rb'), pickle_module=dill)
     cfg = payload['cfg']
 
+    # file_path = '/srv/rl2-lab/flash8/mbronars3/RAL/block_reach/real/diffusion_policy/config_full_obs.yaml'
+    # cfg = OmegaConf.load(file_path)
+
     # 0, .1, .5, .9, 1
     cfg.task.env_runner.alpha = alpha
 
     # 0.25, 0.5, 0.75, 0.99, 1
     cfg.task.env_runner.gamma = gamma
 
-    cfg.task.env_runner.test_start_seed = seed
+    cfg.task.env_runner.test_start_seed = 0 #seed
 
     # cfg.task.env_runner.max_steps= 100
 
-    cfg.task.env_runner.n_test = 25
+    cfg.task.env_runner.n_test = 50
     cfg.task.env_runner.n_envs = 25
 
 

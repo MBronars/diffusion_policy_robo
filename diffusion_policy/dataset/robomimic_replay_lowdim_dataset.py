@@ -39,6 +39,7 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
             max_train_episodes=None
         ):
         obs_keys = list(obs_keys)
+        self.obs_keys = obs_keys
         rotation_transformer = RotationTransformer(
             from_rep='axis_angle', to_rep=rotation_rep)
 
@@ -213,6 +214,46 @@ class RobomimicReplayLowdimDataset(BaseLowdimDataset):
         green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/new_green.npy")
         # red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/real_red.npy")
         # green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/real_green.npy")
+        # red = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed2_red_goal.npy")
+        # green = np.load("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed2_green_goal.npy")
+
+        
+        # new_goal_path = "/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed1_green_goal.hdf5"
+        # with h5py.File(new_goal_path) as file:
+        #     raw_obs = file['data']['demo_1']['obs']
+        #     obs = np.concatenate([
+        #         raw_obs[key] if key != 'object' else raw_obs[key][:, :20] for key in self.obs_keys
+        #     ], axis=-1).astype(np.float32)
+        #     new_goal = obs[-1]
+        #     np.save("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed1_green_goal.npy", new_goal)
+        
+        # new_goal_path = "/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed2_green_goal.hdf5"
+        # with h5py.File(new_goal_path) as file:
+        #     raw_obs = file['data']['demo_1']['obs']
+        #     obs = np.concatenate([
+        #         raw_obs[key] if key != 'object' else raw_obs[key][:, :20] for key in self.obs_keys
+        #     ], axis=-1).astype(np.float32)
+        #     new_goal = obs[-1]
+        #     np.save("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed2_green_goal.npy", new_goal)
+        
+        # new_goal_path = "/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed1_red_goal.hdf5"
+        # with h5py.File(new_goal_path) as file:
+        #     raw_obs = file['data']['demo_1']['obs']
+        #     obs = np.concatenate([
+        #         raw_obs[key] if key != 'object' else raw_obs[key][:, :20] for key in self.obs_keys
+        #     ], axis=-1).astype(np.float32)
+        #     new_goal = obs[-1]
+        #     np.save("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed1_red_goal.npy", new_goal)
+        
+        # new_goal_path = "/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed2_red_goal.hdf5"
+        # with h5py.File(new_goal_path) as file:
+        #     raw_obs = file['data']['demo_1']['obs']
+        #     obs = np.concatenate([
+        #         raw_obs[key] if key != 'object' else raw_obs[key][:, :20] for key in self.obs_keys
+        #     ], axis=-1).astype(np.float32)
+        #     new_goal = obs[-1]
+        #     np.save("/srv/rl2-lab/flash8/mbronars3/RAL/datasets/seed2_red_goal.npy", new_goal)
+
         red = torch.from_numpy(red)
         green = torch.from_numpy(green)
         # broadcast green from shape ([32]) to ([16, 32])

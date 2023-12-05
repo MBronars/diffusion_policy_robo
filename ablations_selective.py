@@ -5,13 +5,13 @@ import click
 # guidance_weights = [0.5, 1, 5, 10, 15, 20]
 # alphas = [0, 0.2, 0.4, 0.6, 0.8, 1]
 # gammas = [0.5, 0.6, 0.7, 0.8, 0.9, 1]
-guidance_weights = [0, 1, 2, 5, 10]
-alphas = [0, .4, .6, .8, 0.9, 1]
-gammas = [1, 0.95, 0.75, 0.5, 0.25]
+guidance_weights = [1, 2, 2.5, 5]
+alphas = [0.9, 1] #[0, .5, 0.9, 1]
+gammas = [1, 0.9, 0.75, 0.5]
 # seeds = [420]
 
 tuned_alpha = 0.9
-tuned_gamma = 1
+tuned_gamma = 0.5
 
 def run_ablations(directory, checkpoint, alphas = None, gammas = None, guidance_weights = None):
     
@@ -36,7 +36,7 @@ def run_ablations(directory, checkpoint, alphas = None, gammas = None, guidance_
                     with ctx.scope(cleanup=False):
                         output_dir = f"{directory}/alpha/{alpha}/w_{guidance_weight}"
                         try:
-                            eval.main(['-c', checkpoint, '-o', output_dir, '-a', alpha, '-g', tuned_gamma, '-w', guidance_weight,'-t', ["mkbts", "mkbtl"]])
+                            eval.main(['-c', checkpoint, '-o', output_dir, '-a', alpha, '-g', tuned_gamma, '-w', guidance_weight,'-t', ["mbtls", "kbtls"]])
                         except SystemExit:
                             pass
                         except KeyboardInterrupt:
@@ -49,7 +49,7 @@ def run_ablations(directory, checkpoint, alphas = None, gammas = None, guidance_
                     with ctx.scope(cleanup=False):
                         output_dir = f"{directory}/gamma/{gamma}/w_{guidance_weight}"
                         try:
-                            eval.main(['-c', checkpoint, '-o', output_dir, '-a', tuned_alpha, '-g', gamma, '-w', guidance_weight,'-t', ["mkbts", "mkbtl"]])
+                            eval.main(['-c', checkpoint, '-o', output_dir, '-a', tuned_alpha, '-g', gamma, '-w', guidance_weight,'-t', ["mbtls", "kbtls"]])
                         except SystemExit:
                             pass
                         except KeyboardInterrupt:

@@ -117,6 +117,10 @@ test_names = {
     "kbtls" : ["kettle", "bottom burner", "top burner", "light switch", "slide cabinet"],
     "mkbls" : ["microwave", "kettle", "bottom burner", "light switch", "slide cabinet"],
     "mkbts" : ["microwave", "kettle", "bottom burner", "top burner", "slide cabinet"],
+    "kbtlh" : ["kettle", "bottom burner", "top burner", "light switch", "hinge cabinet"],
+    "kbtls" : ["kettle", "bottom burner", "top burner", "light switch", "slide cabinet"],
+    "kblsh" : ["kettle", "bottom burner", "light switch", "slide cabinet", "hinge cabinet"],
+    "kbtsh" : ["kettle", "bottom burner", "top burner", "slide cabinet", "hinge cabinet"],
 }
 
 

@@ -29,11 +29,11 @@ from evaluate_legibility import get_legibility
 @click.option('-c', '--checkpoint', required=True)
 @click.option('-o', '--output_dir', required=True)
 @click.option('-d', '--device', default='cuda:0')
-@click.option('-a', '--alpha', default=0.9)
-@click.option('-g', '--gamma', default=.5)
-@click.option('-w', '--guidance_weight', default= 5.0)
+@click.option('-a', '--alpha', default=.9)
+@click.option('-g', '--gamma', default=.9)
+@click.option('-w', '--guidance_weight', default= 2.5)
 @click.option('-s', '--seed', default=420)
-@click.option('-t', '--task', default=["mkbts", "mkbtl"])
+@click.option('-t', '--task', default=["kbtls", "kbtsh"])
 def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight, seed, task):
     if os.path.exists(output_dir):
         click.confirm(f"Output path {output_dir} already exists! Overwrite?", abort=True)
@@ -54,9 +54,9 @@ def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight, seed, ta
 
     # from IPython import embed; embed()
 
-    # file_path = '/srv/rl2-lab/flash8/mbronars3/RAL/selective_interaction/sim/diffusion_policy/config.yaml'
+    file_path = '/srv/rl2-lab/flash8/mbronars3/RAL/selective_interaction/sim/diffusion_policy/config.yaml'
 
-    file_path = '/srv/rl2-lab/flash8/mbronars3/RAL/selective_interaction/sim/IBC/config.yaml'
+    # file_path = '/srv/rl2-lab/flash8/mbronars3/RAL/selective_interaction/sim/IBC/config.yaml'
     # Load the YAML file into a Python dictionary
     # with open(file_path, 'r') as file:
     #     cfg2 = yaml.safe_load(file)
@@ -70,7 +70,7 @@ def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight, seed, ta
     # # 0.25, 0.5, 0.75, 0.99, 1
     cfg.task.env_runner.gamma = gamma
 
-    cfg.task.env_runner.n_test = 50
+    cfg.task.env_runner.n_test = 25
     cfg.task.env_runner.n_envs = 25
 
     # cfg.task.env_runner.test_start_seed = 4200
@@ -81,18 +81,18 @@ def main(checkpoint, output_dir, device, alpha, gamma, guidance_weight, seed, ta
     cfg.task.env_runner.goal_names = ast.literal_eval(task)
 
     cls = hydra.utils.get_class(cfg._target_)
-    workspace = cls(cfg)#, output_dir=output_dir)
+    workspace = cls(cfg, output_dir=output_dir)
     # workspace = cls(cfg)
     workspace: BaseWorkspace
     workspace.load_payload(payload, exclude_keys=None, include_keys=None)
     
     # get policy from workspace
-    # policy = workspace.model
-    # if cfg.training.use_ema:
-    #     policy = workspace.ema_model
+    policy = workspace.model
+    if cfg.training.use_ema:
+        policy = workspace.ema_model
 
     # policy = workspace.policy
-    policy = workspace.model
+    # policy = workspace.model
     
     device = torch.device(device)
     policy.to(device)
